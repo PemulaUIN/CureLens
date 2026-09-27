@@ -2,12 +2,12 @@
 @tailwind components;
 @tailwind utilities;
 
-:root {
-  --font-manrope: 'Manrope', sans-serif;
-}
+@layer base {
+  *, ::before, ::after {
+    font-family: var(--font-manrope) !important;
+  }
 
-body {
-  font-family: var(--font-manrope);
-  background-color: #ffffff;
-  color: #0f172a;
+  html, body {
+    font-family: var(--font-manrope) !important;
+  }
 }

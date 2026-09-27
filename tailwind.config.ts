@@ -9,14 +9,7 @@ const config: Config = {
   theme: {
     extend: {
       fontFamily: {
-        sans: ["var(--font-manrope)", "sans-serif"],
-      },
-      colors: {
-        safety: {
-          safe: "#10b981",      // Hijau Emerald
-          warning: "#f59e0b",   // Kuning Amber
-          danger: "#ef4444",    // Merah Koral
-        },
+        sans: ["var(--font-manrope)"],
       },
     },
   },
