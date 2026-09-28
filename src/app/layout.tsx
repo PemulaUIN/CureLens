@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { Manrope } from "next/font/google";
 import Navbar from "@/components/navbar";
+import Footer from "@/components/footer";
 import "./globals.css";
 
 const manrope = Manrope({
@@ -22,8 +23,14 @@ export default function RootLayout({
   return (
     <html lang="id" className={manrope.variable}>
       <body className="font-sans bg-white text-slate-800 antialiased min-h-screen flex flex-col">
+        {/* Navbar di paling atas */}
         <Navbar />
+
+        {/* Konten Halaman (children) */}
         <main className="flex-1">{children}</main>
+
+        {/* Footer di paling bawah */}
+        <Footer />
       </body>
     </html>
   );

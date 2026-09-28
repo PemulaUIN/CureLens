@@ -8,7 +8,8 @@ export default function Navbar() {
   const pathname = usePathname();
 
   const isHome = pathname === "/";
-  const isCheck = pathname === "/check";
+  // Memeriksa apakah halaman saat ini berada di dalam rute /check (step-1, step-2, step-3)
+  const isCheck = pathname.startsWith("/check");
 
   return (
     <header className="sticky top-0 z-50 bg-white/90 backdrop-blur-md border-b border-slate-100 py-4 px-4 sm:px-6 lg:px-8">

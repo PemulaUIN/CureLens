@@ -4,9 +4,17 @@ const nextConfig = {
   images: {
     remotePatterns: [],
   },
-  // Pindahkan ke dalam objek experimental
   experimental: {
     serverComponentsExternalPackages: ["@google/genai"],
+  },
+  async redirects() {
+    return [
+      {
+        source: "/check",
+        destination: "/check/step-1",
+        permanent: true,
+      },
+    ];
   },
 };
 
