@@ -1,4 +1,4 @@
-// File: D:\CureLens\src\app\check\layout.tsx
+// File: D:\projectL\CureLens\src\app\check\layout.tsx
 import * as entry from '../../../../src/app/check/layout.js'
 import type { ResolvingMetadata, ResolvingViewport } from 'next/dist/lib/metadata/types/metadata-interface.js'
 

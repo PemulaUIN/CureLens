@@ -1,4 +1,4 @@
-// File: D:\CureLens\src\app\check\step-1\page.tsx
+// File: D:\projectL\CureLens\src\app\check\step-1\page.tsx
 import * as entry from '../../../../../src/app/check/step-1/page.js'
 import type { ResolvingMetadata, ResolvingViewport } from 'next/dist/lib/metadata/types/metadata-interface.js'
 
