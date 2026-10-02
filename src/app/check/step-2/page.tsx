@@ -2,13 +2,13 @@
 
 import { useState, useRef } from 'react';
 import { useRouter } from 'next/navigation';
-import { Camera, ArrowLeft, Cpu, UploadCloud, X, FileText } from 'lucide-react';
+import { Camera, ArrowLeft, UploadCloud, X, FileText, ShieldCheck, ScanLine } from 'lucide-react';
 import { useFormContext } from '@/context/FormContext';
 
 export default function Step2Page() {
   const router = useRouter();
-  
-  // Ambil context dan buat fallback aman agar tidak error di TypeScript
+
+  // Ambil context dan fallback aman
   const formContext = useFormContext() as any;
   const formData = formContext?.formData || formContext?.data || {};
   const updateFormData = formContext?.updateFormData || formContext?.updateData || (() => {});
@@ -42,6 +42,9 @@ export default function Step2Page() {
 
   const handleRemoveFile = () => {
     setSelectedFile(null);
+    if (previewUrl) {
+      URL.revokeObjectURL(previewUrl);
+    }
     setPreviewUrl(null);
     updateFormData({ image: null });
     if (fileInputRef.current) {
@@ -59,19 +62,109 @@ export default function Step2Page() {
   };
 
   return (
-    <div className="w-full max-w-4xl mx-auto space-y-6">
-      {/* 3.4 Upload Section Card */}
-      <div className="bg-white rounded-3xl p-6 md:p-8 shadow-sm border border-slate-100">
-        <div className="mb-6">
-          <h2 className="text-xl md:text-2xl font-bold text-[#1E293B]">
-            Unggah Kemasan atau Resep Obat
-          </h2>
-          <p className="text-sm text-[#64748B] mt-1">
-            Sistem OCR CureLens akan otomatis mengekstrak komposisi aktif, dosis miligram, dan nomor registrasi BPOM.
+    <div className="w-full max-w-6xl mx-auto space-y-8 font-['Manrope',sans-serif] text-[#1E293B]">
+      
+      {/* ==================== 3.2 PAGE HEADER & DAILY QUOTA CARD ==================== */}
+      <div className="flex flex-col md:flex-row md:items-start justify-between gap-6">
+        <div className="space-y-3 max-w-2xl">
+          {/* Category Badge */}
+          <div className="inline-flex items-center gap-1.5 px-3 py-1 bg-[#A6DB00] text-[#0F172A] rounded-full text-[11px] font-extrabold uppercase tracking-wider">
+            <ShieldCheck className="w-3.5 h-3.5" />
+            <span>CLINICAL AI</span>
+          </div>
+
+          {/* Title & Sub-description */}
+          <h1 className="text-3xl md:text-4xl font-extrabold text-[#0F172A] tracking-tight">
+            Cek Obat
+          </h1>
+          <p className="text-sm md:text-base text-[#64748B] leading-relaxed">
+            Lengkapi data dan riwayat kondisi medis lalu unggah foto obat untuk analisis kontraindikasi serta keamanan polifarmasi yang akurat.
           </p>
         </div>
 
-        {/* Hidden Input File */}
+        {/* Quota Card */}
+        <div className="bg-white rounded-2xl p-4 md:p-5 shadow-sm border border-slate-100 min-w-[280px]">
+          <div className="flex items-center justify-between text-xs font-bold text-[#1E293B] mb-2">
+            <span>Kuota Analisis Harian</span>
+            <span className="text-[#0F172A]">3/5 Tersisa</span>
+          </div>
+          {/* Progress Bar (5 segments, 3 active) */}
+          <div className="grid grid-cols-5 gap-1.5 mb-2">
+            <div className="h-2 rounded-full bg-[#A6DB00]"></div>
+            <div className="h-2 rounded-full bg-[#A6DB00]"></div>
+            <div className="h-2 rounded-full bg-[#A6DB00]"></div>
+            <div className="h-2 rounded-full bg-[#E2E8F0]"></div>
+            <div className="h-2 rounded-full bg-[#E2E8F0]"></div>
+          </div>
+          <p className="text-[11px] text-[#94A3B8] font-medium">
+            Maksimal 5x pemindaian aman per hari
+          </p>
+        </div>
+      </div>
+
+      {/* ==================== 3.3 STEPPER / PROGRESS HEADER ==================== */}
+      <div className="bg-white rounded-2xl p-2 md:p-3 shadow-sm border border-slate-100 grid grid-cols-1 md:grid-cols-3 gap-2">
+        {/* Step 1 (Completed / Inactive) */}
+        <div 
+          onClick={() => router.push('/check/step-1')}
+          className="flex items-center gap-3 p-3 rounded-xl cursor-pointer hover:bg-slate-50 transition-all"
+        >
+          <div className="w-9 h-9 rounded-full bg-[#E2E8F0] text-[#64748B] flex items-center justify-center font-bold text-sm shrink-0">
+            1
+          </div>
+          <div>
+            <span className="block text-[10px] font-bold text-[#94A3B8] uppercase tracking-wider">
+              FASE PENILAIAN
+            </span>
+            <span className="text-sm font-bold text-[#64748B]">
+              Langkah 1: Profil Medis
+            </span>
+          </div>
+        </div>
+
+        {/* Step 2 (Active - Current) */}
+        <div className="flex items-center gap-3 p-3 rounded-xl bg-[#F1F5F9]">
+          <div className="w-9 h-9 rounded-full bg-[#A6DB00] text-[#0F172A] flex items-center justify-center font-bold text-sm shrink-0">
+            2
+          </div>
+          <div>
+            <span className="block text-[10px] font-bold text-[#64748B] uppercase tracking-wider">
+              DOKUMENTASI
+            </span>
+            <span className="text-sm font-bold text-[#0F172A]">
+              Langkah 2: Unggah Foto
+            </span>
+          </div>
+        </div>
+
+        {/* Step 3 (Inactive) */}
+        <div className="flex items-center gap-3 p-3 rounded-xl opacity-60">
+          <div className="w-9 h-9 rounded-full bg-[#E2E8F0] text-[#64748B] flex items-center justify-center font-bold text-sm shrink-0">
+            3
+          </div>
+          <div>
+            <span className="block text-[10px] font-bold text-[#94A3B8] uppercase tracking-wider">
+              SINTESIS KOMPUTASI
+            </span>
+            <span className="text-sm font-bold text-[#64748B]">
+              Langkah 3: Analisis AI
+            </span>
+          </div>
+        </div>
+      </div>
+
+      {/* ==================== 3.4 UPLOAD SECTION (DROPZONE AREA) ==================== */}
+      <div className="bg-white rounded-3xl p-6 md:p-10 shadow-sm border border-slate-100">
+        <div className="mb-8">
+          <h2 className="text-2xl md:text-3xl font-bold text-[#0F172A]">
+            Unggah Kemasan Obat
+          </h2>
+          <p className="text-sm md:text-base text-[#64748B] mt-1.5">
+            Sistem CureLens akan otomatis mengekstrak dan menganalisis nama obat, komposisi aktif, serta dosisnya
+          </p>
+        </div>
+
+        {/* Input File Tersembunyi */}
         <input
           type="file"
           ref={fileInputRef}
@@ -84,7 +177,7 @@ export default function Step2Page() {
           }}
         />
 
-        {/* Dropzone Box Inner */}
+        {/* Dropzone Container */}
         {!previewUrl ? (
           <div
             onDragOver={(e) => {
@@ -93,91 +186,91 @@ export default function Step2Page() {
             }}
             onDragLeave={() => setIsDragging(false)}
             onDrop={handleDrop}
-            className={`border-2 border-dashed rounded-2xl p-8 text-center bg-[#F8FAFC] transition-colors flex flex-col items-center justify-center space-y-4 ${
-              isDragging ? 'border-[#A6DB00] bg-[#F1F5F9]' : 'border-slate-200'
+            className={`rounded-3xl p-10 md:p-14 text-center bg-[#F8FAFC] transition-all flex flex-col items-center justify-center space-y-5 border ${
+              isDragging ? 'border-[#A6DB00] bg-[#F1F5F9] scale-[0.99]' : 'border-transparent'
             }`}
           >
-            {/* Camera Icon in Soft Lime Container */}
-            <div className="w-16 h-16 rounded-2xl bg-[#E2F396] bg-opacity-60 flex items-center justify-center text-[#1E293B]">
-              <Camera className="w-8 h-8 text-[#1E293B]" />
+            {/* Kamera Icon Box Soft Green */}
+            <div className="w-16 h-16 rounded-2xl bg-[#E2F396]/60 flex items-center justify-center text-[#1E293B]">
+              <Camera className="w-8 h-8 text-[#27272A]" />
             </div>
 
-            <div className="space-y-1">
-              <h3 className="text-base md:text-lg font-bold text-[#1E293B]">
+            <div className="space-y-2 max-w-lg">
+              <h3 className="text-lg md:text-xl font-bold text-[#0F172A]">
                 Seret & Jatuhkan Foto Kemasan Obat Di Sini
               </h3>
-              <p className="text-xs md:text-sm text-[#64748B] max-w-md">
+              <p className="text-xs md:text-sm text-[#64748B] leading-relaxed">
                 Mendukung format JPG, PNG, WEBP (Maksimal 10MB). Pastikan tulisan komposisi terlihat fokus dan jelas.
               </p>
             </div>
 
-            {/* Select File Button */}
+            {/* Pilih File Button */}
             <button
               type="button"
               onClick={() => fileInputRef.current?.click()}
-              className="mt-2 px-6 py-3 bg-[#27272A] hover:bg-[#18181B] text-white font-medium text-sm rounded-full transition-all flex items-center gap-2 shadow-sm"
+              className="mt-2 px-6 py-3 bg-[#27272A] hover:bg-[#18181B] text-white font-bold text-sm rounded-full transition-all flex items-center gap-2 shadow-sm"
             >
-              <UploadCloud className="w-4 h-4" />
               Pilih File dari Perangkat
             </button>
           </div>
         ) : (
           /* Preview State */
-          <div className="relative border border-slate-200 rounded-2xl p-4 bg-[#F8FAFC] flex flex-col md:flex-row items-center gap-4">
-            <div className="w-full md:w-48 h-36 relative rounded-xl overflow-hidden bg-slate-200 flex-shrink-0">
+          <div className="relative border border-slate-200 rounded-2xl p-5 bg-[#F8FAFC] flex flex-col md:flex-row items-center gap-6">
+            <div className="w-full md:w-52 h-40 relative rounded-xl overflow-hidden bg-slate-200 shrink-0 shadow-inner">
               <img
                 src={previewUrl}
                 alt="Preview Foto Obat"
                 className="w-full h-full object-cover"
               />
             </div>
-            <div className="flex-1 w-full space-y-2">
-              <div className="flex items-center gap-2 text-[#1E293B] font-semibold text-sm">
-                <FileText className="w-4 h-4 text-[#A6DB00]" />
-                <span className="truncate max-w-xs">{selectedFile?.name}</span>
+            <div className="flex-1 w-full space-y-2.5">
+              <div className="flex items-center gap-2 text-[#0F172A] font-bold text-base">
+                <FileText className="w-5 h-5 text-[#86B300]" />
+                <span className="truncate max-w-md">{selectedFile?.name}</span>
               </div>
-              <p className="text-xs text-[#64748B]">
+              <p className="text-xs text-[#64748B] font-medium">
                 Ukuran: {selectedFile ? (selectedFile.size / (1024 * 1024)).toFixed(2) : 0} MB
               </p>
-              <div className="inline-flex items-center gap-1.5 px-3 py-1 bg-[#A6DB00] bg-opacity-20 text-[#1E293B] text-xs font-semibold rounded-full">
-                ✓ Siap dianalisis
+              <div className="inline-flex items-center gap-1.5 px-3 py-1 bg-[#A6DB00]/20 text-[#0F172A] text-xs font-bold rounded-full">
+                ✓ Foto Siap untuk dianalisis
               </div>
             </div>
             <button
               type="button"
               onClick={handleRemoveFile}
-              className="absolute top-3 right-3 md:static p-2 text-slate-400 hover:text-red-500 hover:bg-red-50 rounded-full transition-all"
+              className="p-2.5 text-slate-400 hover:text-red-500 hover:bg-red-50 rounded-full transition-all"
               title="Hapus foto"
             >
-              <X className="w-5 h-5" />
+              <X className="w-6 h-6" />
             </button>
           </div>
         )}
-
-        {/* 3.5 Bottom Action Bar */}
-        <div className="flex items-center justify-between pt-8 border-t border-slate-100 mt-8">
-          <button
-            type="button"
-            onClick={() => router.push('/check/step-1')}
-            className="px-6 py-3 bg-[#F1F5F9] hover:bg-slate-200 text-[#1E293B] font-semibold text-sm rounded-full transition-all flex items-center gap-2"
-          >
-            <ArrowLeft className="w-4 h-4" />
-            Kembali
-          </button>
-
-          <button
-            type="button"
-            onClick={handleNext}
-            disabled={!selectedFile}
-            className={`px-6 py-3 bg-[#A6DB00] hover:bg-[#95c500] text-[#1E293B] font-bold text-sm rounded-full transition-all flex items-center gap-2 shadow-sm ${
-              !selectedFile ? 'opacity-50 cursor-not-allowed' : 'hover:scale-[1.02]'
-            }`}
-          >
-            <Cpu className="w-4 h-4" />
-            Mulai Analisis AI (Hasil & Saran)
-          </button>
-        </div>
       </div>
+
+      {/* ==================== 3.5 BOTTOM ACTION BAR ==================== */}
+      <div className="flex items-center justify-between pt-2">
+        <button
+          type="button"
+          onClick={() => router.push('/check/step-1')}
+          className="px-6 py-3 bg-[#F1F5F9] hover:bg-slate-200 text-[#1E293B] font-bold text-sm rounded-full transition-all flex items-center gap-2"
+        >
+          <ArrowLeft className="w-4 h-4" />
+          Kembali
+        </button>
+
+        <button
+          type="button"
+          onClick={handleNext}
+          disabled={!selectedFile}
+          className={`px-7 py-3.5 bg-[#A6DB00] hover:bg-[#95c500] text-[#0F172A] font-extrabold text-sm rounded-full transition-all flex items-center gap-2.5 shadow-sm ${
+            !selectedFile ? 'opacity-50 cursor-not-allowed' : 'hover:scale-[1.02] active:scale-[0.98]'
+          }`}
+        >
+          <ScanLine className="w-4 h-4 text-[#0F172A]" />
+          Mulai Analisis Obat
+        </button>
+      </div>
+
     </div>
   );
 }

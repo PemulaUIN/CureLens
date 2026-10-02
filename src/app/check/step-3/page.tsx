@@ -31,7 +31,7 @@ export default function Step3Page() {
         <div>
           <div className="inline-flex items-center gap-1.5 px-3 py-1 bg-[#A6DB00] text-[#1E293B] text-xs font-extrabold rounded-full tracking-wider uppercase mb-2">
             <ShieldCheck className="w-3.5 h-3.5" />
-            CLINICAL AI TRIAGING ENGINE
+            CLINICAL AI
           </div>
           <h1 className="text-3xl md:text-4xl font-extrabold text-[#1E293B] tracking-tight">
             Cek Obat
@@ -153,10 +153,7 @@ export default function Step3Page() {
               )}
             </div>
 
-            <div className="flex justify-between items-center text-xs font-semibold text-[#1E293B] pt-1">
-              <span>Bisamol / Paracetamol</span>
-              <span className="text-[#64748B]">125mg/5ml</span>
-            </div>
+            
           </div>
 
           {/* Nama Obat & Kandungan OCR */}
@@ -167,7 +164,7 @@ export default function Step3Page() {
                 <span className="text-xs text-[#64748B]">Batch: #02302001</span>
               </div>
               <h3 className="text-xl font-bold text-[#1E293B]">
-                Flu & Cough Relief Extra (Bisamol Syrup)
+                Flu & Cough Relief Extra
               </h3>
             </div>
 
