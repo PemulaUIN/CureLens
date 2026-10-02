@@ -1,34 +1,137 @@
-'use client';
+"use client";
 
-import { useState } from 'react';
-import { useRouter } from 'next/navigation';
-import { 
-  ShieldCheck, 
-  AlertTriangle, 
-  Lightbulb, 
-  ArrowLeft, 
-  Download, 
-  RotateCcw, 
-  Trash2, 
+import { useEffect, useState } from "react";
+import { useRouter } from "next/navigation";
+import {
+  ShieldCheck,
+  AlertTriangle,
+  Lightbulb,
+  ArrowLeft,
+  Download,
+  RotateCcw,
+  Trash2,
   History,
   Camera,
   CheckCircle2,
   AlertCircle,
-  X
-} from 'lucide-react';
-import { useFormContext } from '@/context/FormContext';
+  X,
+  Loader2,
+} from "lucide-react";
+import { useFormContext } from "@/context/FormContext";
 
 export default function Step3Page() {
   const router = useRouter();
   const formContext = useFormContext() as any;
-  const formData = formContext?.formData || formContext?.data || {};
+  const { formData, analysisResult } = formContext || {};
 
-  // State untuk pop up "Lihat Detail" pada riwayat cek obat
-  const [selectedItem, setSelectedItem] = useState<{ name: string; status: string } | null>(null);
+  const [data, setData] = useState<any>(null);
+  const [imagePreview, setImagePreview] = useState<string | null>(null);
+  const [isHydrated, setIsHydrated] = useState(false);
+  const [selectedItem, setSelectedItem] = useState<{
+    name: string;
+    status: string;
+    detail?: string;
+  } | null>(null);
+
+  useEffect(() => {
+    // 1. Ambil data dari Context atau sessionStorage
+    const resultData =
+      analysisResult || formData?.analysisResult || formData?.analysis;
+
+    const savedImage =
+      formData?.imagePreview ||
+      (formData?.image && typeof formData.image === "string"
+        ? formData.image
+        : null) ||
+      sessionStorage.getItem("imagePreview");
+
+    if (resultData) {
+      setData(resultData);
+    } else {
+      const stored = sessionStorage.getItem("analysisResult");
+      if (stored) {
+        try {
+          setData(JSON.parse(stored));
+        } catch (e) {
+          console.error("Gagal parse sessionStorage", e);
+        }
+      }
+    }
+
+    if (savedImage) {
+      setImagePreview(savedImage);
+    } else if (formData?.image && typeof formData.image === "object") {
+      try {
+        setImagePreview(URL.createObjectURL(formData.image));
+      } catch (e) {
+        console.error("Gagal createObjectURL", e);
+      }
+    }
+
+    setIsHydrated(true);
+  }, [analysisResult, formData]);
+
+  // Tampilan Loading/Hydration singkat
+  if (!isHydrated) {
+    return (
+      <div className="w-full max-w-md mx-auto py-24 text-center space-y-4 font-sans">
+        <Loader2 className="w-8 h-8 text-[#1E293B] animate-spin mx-auto" />
+        <p className="text-sm text-slate-500 font-medium">
+          Memuat hasil analisis...
+        </p>
+      </div>
+    );
+  }
+
+  // Jika data tidak ditemukan
+  if (!data) {
+    return (
+      <div className="max-w-md mx-auto my-16 p-8 bg-white rounded-3xl shadow-sm border border-slate-100 text-center space-y-4 font-sans">
+        <div className="w-14 h-14 bg-amber-100 text-amber-600 rounded-2xl flex items-center justify-center mx-auto">
+          <AlertCircle className="w-7 h-7" />
+        </div>
+        <h2 className="text-xl font-bold text-[#1E293B]">
+          Data Hasil Analisis Tidak Ditemukan
+        </h2>
+        <p className="text-xs text-[#64748B]">
+          Silakan lakukan pemindaian ulang foto obat di Langkah 2.
+        </p>
+        <button
+          onClick={() => router.push("/check/step-2")}
+          className="mt-2 px-6 py-2.5 bg-[#1E293B] text-white text-xs font-bold rounded-full hover:bg-black transition-all"
+        >
+          Kembali ke Langkah 2
+        </button>
+      </div>
+    );
+  }
+
+  // Tentukan Kategori Status Keamanan
+  const rawStatus = String(data.safety_status || "").toLowerCase();
+  let statusCategory: "SAFE" | "WARNING" | "UNSAFE" = "UNSAFE";
+
+  if (rawStatus.includes("aman") && !rawStatus.includes("tidak")) {
+    statusCategory = "SAFE";
+  } else if (rawStatus.includes("hindari") || rawStatus.includes("perhatian")) {
+    statusCategory = "WARNING";
+  } else {
+    statusCategory = "UNSAFE";
+  }
+
+  // Ambil daftar riwayat dari context atau buat item dari analisis saat ini
+  const historyList = formData?.history || [
+    {
+      id: "1",
+      name: data.detected_medicine_name || "Obat Terdeteksi",
+      time: `Sediaan: ${data.dosage_form || "Umum"}`,
+      status: data.status_badge_label || data.safety_status || "Teranalisis",
+      category: statusCategory,
+      detail: data.medical_explanation,
+    },
+  ];
 
   return (
     <div className="w-full max-w-5xl mx-auto space-y-6 pb-12 font-sans text-[#1E293B]">
-      
       {/* ========================================================= */}
       {/* TOP HEADER & QUOTA CARD SECTION                           */}
       {/* ========================================================= */}
@@ -42,15 +145,20 @@ export default function Step3Page() {
             Cek Obat
           </h1>
           <p className="text-sm text-[#64748B] mt-1 max-w-xl">
-            Lengkapi data dan riwayat kondisi medis lalu unggah foto obat untuk analisis kontraindikasi serta keamanan polifarmasi yang akurat.
+            Lengkapi data dan riwayat kondisi medis lalu unggah foto obat untuk
+            analisis kontraindikasi serta keamanan polifarmasi yang akurat.
           </p>
         </div>
 
         {/* Quota Card */}
         <div className="bg-white border border-slate-100 rounded-2xl p-4 shadow-sm min-w-[280px] w-full lg:w-auto">
           <div className="flex justify-between items-center mb-2">
-            <span className="text-xs font-bold text-[#1E293B]">Kuota Analisis Harian</span>
-            <span className="text-xs font-extrabold text-[#1E293B]">3 / 5 Tersisa</span>
+            <span className="text-xs font-bold text-[#1E293B]">
+              Kuota Analisis Harian
+            </span>
+            <span className="text-xs font-extrabold text-[#1E293B]">
+              3 / 5 Tersisa
+            </span>
           </div>
           <div className="flex gap-1 mb-2">
             <div className="h-2 flex-1 bg-[#A6DB00] rounded-full"></div>
@@ -59,44 +167,55 @@ export default function Step3Page() {
             <div className="h-2 flex-1 bg-slate-200 rounded-full"></div>
             <div className="h-2 flex-1 bg-slate-200 rounded-full"></div>
           </div>
-          <p className="text-[11px] text-[#64748B]">Maksimal 5x pemindaian aman per hari.</p>
+          <p className="text-[11px] text-[#64748B]">
+            Maksimal 5x pemindaian aman per hari.
+          </p>
         </div>
       </div>
 
       {/* ========================================================= */}
-      {/* STEPPER HEADER                                            */}
+      {/* STEPPER HEADER                                           */}
       {/* ========================================================= */}
       <div className="bg-white rounded-2xl p-4 shadow-sm border border-slate-100 grid grid-cols-1 md:grid-cols-3 gap-4">
-        {/* Step 1 */}
         <div className="flex items-center gap-3 p-3 rounded-xl opacity-60">
           <div className="w-8 h-8 rounded-full bg-slate-200 text-slate-600 font-bold flex items-center justify-center text-sm">
             1
           </div>
           <div>
-            <div className="text-[10px] font-bold text-[#64748B] tracking-wider uppercase">FASE PENILAIAN</div>
-            <div className="text-sm font-bold text-[#1E293B]">Langkah 1: Profil Medis</div>
+            <div className="text-[10px] font-bold text-[#64748B] tracking-wider uppercase">
+              FASE PENILAIAN
+            </div>
+            <div className="text-sm font-bold text-[#1E293B]">
+              Langkah 1: Profil Medis
+            </div>
           </div>
         </div>
 
-        {/* Step 2 */}
         <div className="flex items-center gap-3 p-3 rounded-xl opacity-60">
           <div className="w-8 h-8 rounded-full bg-slate-200 text-slate-600 font-bold flex items-center justify-center text-sm">
             2
           </div>
           <div>
-            <div className="text-[10px] font-bold text-[#64748B] tracking-wider uppercase">DOKUMENTASI</div>
-            <div className="text-sm font-bold text-[#1E293B]">Langkah 2: Unggah Foto</div>
+            <div className="text-[10px] font-bold text-[#64748B] tracking-wider uppercase">
+              DOKUMENTASI
+            </div>
+            <div className="text-sm font-bold text-[#1E293B]">
+              Langkah 2: Unggah Foto
+            </div>
           </div>
         </div>
 
-        {/* Step 3 (ACTIVE) */}
         <div className="flex items-center gap-3 p-3 rounded-xl bg-[#F1F5F9] border border-slate-200">
           <div className="w-8 h-8 rounded-full bg-[#A6DB00] text-[#1E293B] font-bold flex items-center justify-center text-sm">
             3
           </div>
           <div>
-            <div className="text-[10px] font-bold text-[#64748B] tracking-wider uppercase">SINTESIS KOMPUTASI</div>
-            <div className="text-sm font-bold text-[#1E293B]">Langkah 3: Analisis AI</div>
+            <div className="text-[10px] font-bold text-[#64748B] tracking-wider uppercase">
+              SINTESIS KOMPUTASI
+            </div>
+            <div className="text-sm font-bold text-[#1E293B]">
+              Langkah 3: Analisis AI
+            </div>
           </div>
         </div>
       </div>
@@ -105,23 +224,52 @@ export default function Step3Page() {
       {/* MAIN ANALYSIS RESULT CARD                                 */}
       {/* ========================================================= */}
       <div className="bg-white rounded-3xl p-6 md:p-8 shadow-sm border border-slate-100 space-y-6">
-        
         {/* Indikator Kategori Keamanan Header */}
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-2 border-b border-slate-100">
           <span className="text-xs font-bold text-[#64748B] tracking-wider uppercase">
             INDIKATOR KATEGORI KEAMANAN:
           </span>
           <div className="flex flex-wrap items-center gap-2">
-            <span className="px-3 py-1 bg-slate-100 text-[#64748B] rounded-full text-xs font-bold flex items-center gap-1.5">
-              <span className="w-2 h-2 rounded-full bg-emerald-500"></span>
+            <span
+              className={`px-3 py-1 rounded-full text-xs font-bold flex items-center gap-1.5 ${
+                statusCategory === "SAFE"
+                  ? "bg-emerald-500 text-white shadow-sm"
+                  : "bg-slate-100 text-[#64748B]"
+              }`}
+            >
+              <span
+                className={`w-2 h-2 rounded-full ${
+                  statusCategory === "SAFE" ? "bg-white" : "bg-emerald-500"
+                }`}
+              ></span>
               Aman
             </span>
-            <span className="px-3 py-1 bg-slate-100 text-[#64748B] rounded-full text-xs font-bold flex items-center gap-1.5">
-              <span className="w-2 h-2 rounded-full bg-amber-500"></span>
+            <span
+              className={`px-3 py-1 rounded-full text-xs font-bold flex items-center gap-1.5 ${
+                statusCategory === "WARNING"
+                  ? "bg-amber-500 text-white shadow-sm"
+                  : "bg-slate-100 text-[#64748B]"
+              }`}
+            >
+              <span
+                className={`w-2 h-2 rounded-full ${
+                  statusCategory === "WARNING" ? "bg-white" : "bg-amber-500"
+                }`}
+              ></span>
               Sebaiknya Dihindari
             </span>
-            <span className="px-3 py-1 bg-red-600 text-white rounded-full text-xs font-bold flex items-center gap-1.5 shadow-sm">
-              <span className="w-2 h-2 rounded-full bg-white"></span>
+            <span
+              className={`px-3 py-1 rounded-full text-xs font-bold flex items-center gap-1.5 ${
+                statusCategory === "UNSAFE"
+                  ? "bg-red-600 text-white shadow-sm"
+                  : "bg-slate-100 text-[#64748B]"
+              }`}
+            >
+              <span
+                className={`w-2 h-2 rounded-full ${
+                  statusCategory === "UNSAFE" ? "bg-white" : "bg-red-500"
+                }`}
+              ></span>
               Tidak Aman (Terdeteksi)
             </span>
           </div>
@@ -129,7 +277,6 @@ export default function Step3Page() {
 
         {/* Detail Foto & Komposisi Obat */}
         <div className="grid grid-cols-1 md:grid-cols-12 gap-4">
-          
           {/* Foto Obat Terunggah */}
           <div className="md:col-span-4 bg-[#F8FAFC] border border-slate-200 rounded-2xl p-4 flex flex-col justify-between space-y-3">
             <div className="flex items-center justify-between">
@@ -138,16 +285,16 @@ export default function Step3Page() {
                 FOTO KEMASAN TERUNGGAH
               </div>
               <span className="px-2 py-0.5 bg-[#A6DB00] text-[#1E293B] text-[10px] font-bold rounded-full">
-                95%
+                {data.ai_confidence_level || "95%"}
               </span>
             </div>
-            
+
             <div className="h-32 rounded-xl bg-slate-200 flex items-center justify-center overflow-hidden my-2">
-              {formData.image ? (
-                <img 
-                  src={URL.createObjectURL(formData.image)} 
-                  alt="Foto Kemasan" 
-                  className="w-full h-full object-cover" 
+              {imagePreview ? (
+                <img
+                  src={imagePreview}
+                  alt="Foto Kemasan"
+                  className="w-full h-full object-cover"
                 />
               ) : (
                 <div className="text-center p-4">
@@ -157,20 +304,27 @@ export default function Step3Page() {
                 </div>
               )}
             </div>
-
-            
           </div>
 
           {/* Nama Obat & Kandungan OCR */}
           <div className="md:col-span-8 space-y-4">
             <div className="bg-[#F8FAFC] border border-slate-200 rounded-2xl p-4">
               <div className="flex justify-between items-center mb-1">
-                <span className="text-[11px] font-bold text-[#64748B] tracking-wider uppercase">NAMA OBAT & VARIAN</span>
-                <span className="text-xs text-[#64748B]">Batch: #02302001</span>
+                <span className="text-[11px] font-bold text-[#64748B] tracking-wider uppercase">
+                  NAMA OBAT & VARIAN
+                </span>
+                <span className="text-xs text-[#64748B]">
+                  Batch: {data.batch_number || "Tidak Terbaca"}
+                </span>
               </div>
               <h3 className="text-xl font-bold text-[#1E293B]">
-                Flu & Cough Relief Extra
+                {data.detected_medicine_name || "Tidak Teridentifikasi"}
               </h3>
+              {data.dosage_form && (
+                <p className="text-xs text-slate-500 font-medium mt-1">
+                  Sediaan: {data.dosage_form}
+                </p>
+              )}
             </div>
 
             <div className="bg-[#F8FAFC] border border-slate-200 rounded-2xl p-4">
@@ -178,21 +332,45 @@ export default function Step3Page() {
                 KANDUNGAN TERDETEKSI (AI OCR SCAN)
               </div>
               <p className="text-sm font-semibold text-[#1E293B] leading-relaxed">
-                Pseudoephedrine HCl 30mg, Paracetamol 500mg, Chlorpheniramine Maleate 2mg
+                {data.active_ingredients_text ||
+                  (Array.isArray(data.active_ingredients_list)
+                    ? data.active_ingredients_list.join(", ")
+                    : "Tidak ada data bahan aktif")}
               </p>
             </div>
           </div>
-
         </div>
 
         {/* Box Penjelasan Medis & Interaksi */}
-        <div className="bg-red-50 border border-red-100 rounded-2xl p-5 space-y-2">
-          <div className="flex items-center gap-2 text-red-600 font-bold text-base">
-            <AlertTriangle className="w-5 h-5 text-red-600" />
+        <div
+          className={`border rounded-2xl p-5 space-y-2 ${
+            statusCategory === "UNSAFE"
+              ? "bg-red-50 border-red-100"
+              : statusCategory === "WARNING"
+                ? "bg-amber-50 border-amber-100"
+                : "bg-emerald-50 border-emerald-100"
+          }`}
+        >
+          <div
+            className={`flex items-center gap-2 font-bold text-base ${
+              statusCategory === "UNSAFE"
+                ? "text-red-600"
+                : statusCategory === "WARNING"
+                  ? "text-amber-700"
+                  : "text-emerald-700"
+            }`}
+          >
+            {statusCategory === "UNSAFE" ? (
+              <AlertTriangle className="w-5 h-5 text-red-600" />
+            ) : statusCategory === "WARNING" ? (
+              <AlertCircle className="w-5 h-5 text-amber-600" />
+            ) : (
+              <CheckCircle2 className="w-5 h-5 text-emerald-600" />
+            )}
             Penjelasan Medis & Interaksi:
           </div>
           <p className="text-sm text-slate-700 leading-relaxed">
-            Kandungan Pseudoephedrine bekerja menstimulasi vasokonstriksi (penyempitan pembuluh darah sistemik). Pada pasien dengan riwayat Hipertensi, hal ini dapat memicu lonjakan tekanan darah secara mendadak yang berisiko fatal terhadap pembuluh darah otak dan jantung.
+            {data.medical_explanation || "Penjelasan medis tidak tersedia."}
           </p>
         </div>
 
@@ -203,10 +381,9 @@ export default function Step3Page() {
             Saran & Rekomendasi Tindakan AI:
           </div>
           <p className="text-sm text-slate-800 leading-relaxed">
-            Hindari konsumsi obat ini. Disarankan beralih ke pereda hidung tersumbat topikal seperti semprot hidung saline (air garam fisiologis) atau alternatif obat flu non-vasokonstriktor, serta segera konsultasikan ke dokter atau apoteker.
+            {data.recommendations || "Ikuti petunjuk resep dokter."}
           </p>
         </div>
-
       </div>
 
       {/* ========================================================= */}
@@ -219,8 +396,12 @@ export default function Step3Page() {
               <History className="w-5 h-5" />
             </div>
             <div>
-              <h3 className="text-lg font-bold text-[#1E293B]">Riwayat Cek Obat Terkini</h3>
-              <p className="text-xs text-[#64748B]">Daftar obat yang telah dipindai dan dievaluasi sebelumnya</p>
+              <h3 className="text-lg font-bold text-[#1E293B]">
+                Riwayat Cek Obat Terkini
+              </h3>
+              <p className="text-xs text-[#64748B]">
+                Daftar obat yang telah dipindai dan dievaluasi sebelumnya
+              </p>
             </div>
           </div>
           <span className="text-[10px] font-bold text-[#64748B] tracking-wider uppercase">
@@ -229,92 +410,73 @@ export default function Step3Page() {
         </div>
 
         <div className="space-y-3">
-          {/* Item 1 - Tidak Aman */}
-          <div className="bg-[#F8FAFC] border border-slate-200 rounded-2xl p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-            <div className="flex items-center gap-3">
-              <div className="w-10 h-10 rounded-xl bg-red-100 text-red-600 flex items-center justify-center font-bold text-xs flex-shrink-0">
-                💊
-              </div>
-              <div>
-                <h4 className="font-bold text-sm text-[#1E293B]">Flu & Cough Relief Extra</h4>
-                <p className="text-xs text-[#64748B]">Hari ini, 14:20 • Sediaan Sirup / Kapsul</p>
-              </div>
-            </div>
+          {historyList.map((item: any, idx: number) => {
+            const isUnsafe =
+              item.category === "UNSAFE" ||
+              String(item.status).toLowerCase().includes("tidak aman");
+            const isWarning =
+              item.category === "WARNING" ||
+              String(item.status).toLowerCase().includes("hindari");
 
-            <div className="flex items-center gap-2 self-end sm:self-center">
-              <span className="px-3 py-1 bg-red-600 text-white text-xs font-bold rounded-full">
-                ● Tidak Aman – Kontraindikasi
-              </span>
-              <button
-                type="button"
-                onClick={() => setSelectedItem({ name: 'Flu & Cough Relief Extra', status: 'Tidak Aman – Kontraindikasi' })}
-                className="text-xs font-bold text-[#1E293B] hover:underline px-2 py-1"
+            return (
+              <div
+                key={item.id || idx}
+                className="bg-[#F8FAFC] border border-slate-200 rounded-2xl p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3"
               >
-                Lihat Detail &gt;
-              </button>
-              <button className="p-1.5 text-slate-400 hover:text-red-500 rounded-lg transition-colors">
-                <Trash2 className="w-4 h-4" />
-              </button>
-            </div>
-          </div>
+                <div className="flex items-center gap-3">
+                  <div
+                    className={`w-10 h-10 rounded-xl flex items-center justify-center font-bold text-xs flex-shrink-0 ${
+                      isUnsafe
+                        ? "bg-red-100 text-red-600"
+                        : isWarning
+                          ? "bg-amber-100 text-amber-600"
+                          : "bg-emerald-100 text-emerald-600"
+                    }`}
+                  >
+                    💊
+                  </div>
+                  <div>
+                    <h4 className="font-bold text-sm text-[#1E293B]">
+                      {item.name}
+                    </h4>
+                    <p className="text-xs text-[#64748B]">
+                      {item.time || "Hari ini • Sediaan Obat"}
+                    </p>
+                  </div>
+                </div>
 
-          {/* Item 2 - Aman */}
-          <div className="bg-[#F8FAFC] border border-slate-200 rounded-2xl p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-            <div className="flex items-center gap-3">
-              <div className="w-10 h-10 rounded-xl bg-emerald-100 text-emerald-600 flex items-center justify-center font-bold text-xs flex-shrink-0">
-                💊
+                <div className="flex items-center gap-2 self-end sm:self-center">
+                  <span
+                    className={`px-3 py-1 text-xs font-bold rounded-full ${
+                      isUnsafe
+                        ? "bg-red-600 text-white"
+                        : isWarning
+                          ? "bg-amber-200 text-amber-800"
+                          : "bg-emerald-500 text-white"
+                    }`}
+                  >
+                    ● {item.status}
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() =>
+                      setSelectedItem({
+                        name: item.name,
+                        status: item.status,
+                        detail: item.detail,
+                      })
+                    }
+                    className="text-xs font-bold text-[#1E293B] hover:underline px-2 py-1"
+                  >
+                    Lihat Detail &gt;
+                  </button>
+                  <button className="p-1.5 text-slate-400 hover:text-red-500 rounded-lg transition-colors">
+                    <Trash2 className="w-4 h-4" />
+                  </button>
+                </div>
               </div>
-              <div>
-                <h4 className="font-bold text-sm text-[#1E293B]">Paracetamol 500mg Tablet</h4>
-                <p className="text-xs text-[#64748B]">Kemarin, 09:15 • Analgesik Murni</p>
-              </div>
-            </div>
-
-            <div className="flex items-center gap-2 self-end sm:self-center">
-              <span className="px-3 py-1 bg-emerald-500 text-white text-xs font-bold rounded-full">
-                ● Aman
-              </span>
-              <button
-                type="button"
-                onClick={() => setSelectedItem({ name: 'Paracetamol 500mg Tablet', status: 'Aman' })}
-                className="text-xs font-bold text-[#1E293B] hover:underline px-2 py-1"
-              >
-                Lihat Detail &gt;
-              </button>
-              <button className="p-1.5 text-slate-400 hover:text-red-500 rounded-lg transition-colors">
-                <Trash2 className="w-4 h-4" />
-              </button>
-            </div>
-          </div>
-
-          {/* Item 3 - Sebaiknya Dihindari */}
-          <div className="bg-[#F8FAFC] border border-slate-200 rounded-2xl p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-            <div className="flex items-center gap-3">
-              <div className="w-10 h-10 rounded-xl bg-amber-100 text-amber-600 flex items-center justify-center font-bold text-xs flex-shrink-0">
-                💊
-              </div>
-              <div>
-                <h4 className="font-bold text-sm text-[#1E293B]">Antasida Doen Suspensi</h4>
-                <p className="text-xs text-[#64748B]">21 Okt 2025 • Antasida Lambung</p>
-              </div>
-            </div>
-
-            <div className="flex items-center gap-2 self-end sm:self-center">
-              <span className="px-3 py-1 bg-amber-200 text-amber-800 text-xs font-bold rounded-full">
-                ● Sebaiknya Dihindari
-              </span>
-              <button
-                type="button"
-                onClick={() => setSelectedItem({ name: 'Antasida Doen Suspensi', status: 'Sebaiknya Dihindari' })}
-                className="text-xs font-bold text-[#1E293B] hover:underline px-2 py-1"
-              >
-                Lihat Detail &gt;
-              </button>
-              <button className="p-1.5 text-slate-400 hover:text-red-500 rounded-lg transition-colors">
-                <Trash2 className="w-4 h-4" />
-              </button>
-            </div>
-          </div>
+            );
+          })}
         </div>
       </div>
 
@@ -324,7 +486,7 @@ export default function Step3Page() {
       <div className="flex flex-col sm:flex-row items-center justify-between gap-3 pt-2">
         <button
           type="button"
-          onClick={() => router.push('/check/step-2')}
+          onClick={() => router.push("/check/step-2")}
           className="w-full sm:w-auto px-6 py-3 bg-[#F1F5F9] hover:bg-slate-200 text-[#1E293B] font-semibold text-sm rounded-full transition-all flex items-center justify-center gap-2"
         >
           <ArrowLeft className="w-4 h-4" />
@@ -343,7 +505,7 @@ export default function Step3Page() {
 
           <button
             type="button"
-            onClick={() => router.push('/check/step-1')}
+            onClick={() => router.push("/check/step-1")}
             className="w-full sm:w-auto px-6 py-3 bg-[#A6DB00] hover:bg-[#95c500] text-[#1E293B] font-bold text-sm rounded-full transition-all flex items-center justify-center gap-2 shadow-sm"
           >
             <RotateCcw className="w-4 h-4" />
@@ -352,21 +514,30 @@ export default function Step3Page() {
         </div>
       </div>
 
-{/* ========================================================= */}
+      {/* DISCLAIMER FOOTER */}
+      <div className="bg-red-50 rounded-2xl p-4 flex items-start gap-3 text-xs text-[#000000] border-2 border-red-500">
+        <ShieldCheck className="w-5 h-5 text-red-600 flex-shrink-0 mt-0.5" />
+        <p>
+          <strong className="text-red-600">Disclaimer:</strong> Analisis
+          CureLens AI merupakan{" "}
+          <strong className="text-slate-800">
+            alat bantu triase informasi referensial
+          </strong>{" "}
+          dan{" "}
+          <strong className="text-red-600">
+            bukan pengganti diagnosis medis resmi
+          </strong>{" "}
+          dokter spesialis atau instruksi apoteker berlisensi. Jika Anda
+          mengalami gejala akut atau reaksi alergi, segera kunjungi
+          <strong className="text-red-600">
+            {" "}
+            instalasi gawat darurat terdekat
+          </strong>
+          .
+        </p>
+      </div>
 
-{/* ========================================================= */}
-{/* DISCLAIMER FOOTER                                         */}
-{/* ========================================================= */}
-<div className="bg-red-50 rounded-2xl p-4 flex items-start gap-3 text-xs text-[#000000] border-2 border-red-500">
-  <ShieldCheck className="w-5 h-5 text-red-600 flex-shrink-0 mt-0.5" />
- <p>
-  <strong className="text-red-600">Disclaimer:</strong> Analisis CureLens AI merupakan <strong className="text-slate-800">alat bantu triase informasi referensial</strong> dan <strong className="text-red-600">bukan pengganti diagnosis medis resmi</strong> dokter spesialis atau instruksi apoteker berlisensi. Jika Anda mengalami gejala akut atau reaksi alergi, segera kunjungi<strong className="text-red-600"> instalasi gawat darurat terdekat</strong>.
-</p>
-</div>
-
-      {/* ========================================================= */}
-      {/* POP UP DETAIL RIWAYAT                                     */}
-      {/* ========================================================= */}
+      {/* POP UP DETAIL RIWAYAT */}
       {selectedItem && (
         <div
           className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4"
@@ -378,8 +549,12 @@ export default function Step3Page() {
           >
             <div className="flex items-start justify-between gap-3">
               <div>
-                <h3 className="text-lg font-bold text-[#1E293B]">{selectedItem.name}</h3>
-                <p className="text-xs text-[#64748B]">Status: {selectedItem.status}</p>
+                <h3 className="text-lg font-bold text-[#1E293B]">
+                  {selectedItem.name}
+                </h3>
+                <p className="text-xs text-[#64748B]">
+                  Status: {selectedItem.status}
+                </p>
               </div>
               <button
                 type="button"
@@ -392,7 +567,8 @@ export default function Step3Page() {
             </div>
 
             <div className="bg-[#F8FAFC] border border-slate-200 rounded-2xl p-4 text-sm text-slate-600 leading-relaxed">
-              Placeholder: detail hasil analisis obat akan ditampilkan di sini.
+              {selectedItem.detail ||
+                "Detail hasil analisis obat ditampilkan di sini."}
             </div>
 
             <button
@@ -405,7 +581,6 @@ export default function Step3Page() {
           </div>
         </div>
       )}
-
     </div>
   );
 }
