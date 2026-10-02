@@ -1,5 +1,6 @@
 'use client';
 
+import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { 
   ShieldCheck, 
@@ -12,7 +13,8 @@ import {
   History,
   Camera,
   CheckCircle2,
-  AlertCircle
+  AlertCircle,
+  X
 } from 'lucide-react';
 import { useFormContext } from '@/context/FormContext';
 
@@ -20,6 +22,9 @@ export default function Step3Page() {
   const router = useRouter();
   const formContext = useFormContext() as any;
   const formData = formContext?.formData || formContext?.data || {};
+
+  // State untuk pop up "Lihat Detail" pada riwayat cek obat
+  const [selectedItem, setSelectedItem] = useState<{ name: string; status: string } | null>(null);
 
   return (
     <div className="w-full max-w-5xl mx-auto space-y-6 pb-12 font-sans text-[#1E293B]">
@@ -238,9 +243,13 @@ export default function Step3Page() {
 
             <div className="flex items-center gap-2 self-end sm:self-center">
               <span className="px-3 py-1 bg-red-600 text-white text-xs font-bold rounded-full">
-                ● Tidak Aman – Kontraindikasi Hipertensi
+                ● Tidak Aman – Kontraindikasi
               </span>
-              <button className="text-xs font-bold text-[#1E293B] hover:underline px-2 py-1">
+              <button
+                type="button"
+                onClick={() => setSelectedItem({ name: 'Flu & Cough Relief Extra', status: 'Tidak Aman – Kontraindikasi' })}
+                className="text-xs font-bold text-[#1E293B] hover:underline px-2 py-1"
+              >
                 Lihat Detail &gt;
               </button>
               <button className="p-1.5 text-slate-400 hover:text-red-500 rounded-lg transition-colors">
@@ -265,7 +274,11 @@ export default function Step3Page() {
               <span className="px-3 py-1 bg-emerald-500 text-white text-xs font-bold rounded-full">
                 ● Aman
               </span>
-              <button className="text-xs font-bold text-[#1E293B] hover:underline px-2 py-1">
+              <button
+                type="button"
+                onClick={() => setSelectedItem({ name: 'Paracetamol 500mg Tablet', status: 'Aman' })}
+                className="text-xs font-bold text-[#1E293B] hover:underline px-2 py-1"
+              >
                 Lihat Detail &gt;
               </button>
               <button className="p-1.5 text-slate-400 hover:text-red-500 rounded-lg transition-colors">
@@ -290,7 +303,11 @@ export default function Step3Page() {
               <span className="px-3 py-1 bg-amber-200 text-amber-800 text-xs font-bold rounded-full">
                 ● Sebaiknya Dihindari
               </span>
-              <button className="text-xs font-bold text-[#1E293B] hover:underline px-2 py-1">
+              <button
+                type="button"
+                onClick={() => setSelectedItem({ name: 'Antasida Doen Suspensi', status: 'Sebaiknya Dihindari' })}
+                className="text-xs font-bold text-[#1E293B] hover:underline px-2 py-1"
+              >
                 Lihat Detail &gt;
               </button>
               <button className="p-1.5 text-slate-400 hover:text-red-500 rounded-lg transition-colors">
@@ -335,15 +352,59 @@ export default function Step3Page() {
         </div>
       </div>
 
+{/* ========================================================= */}
+
+{/* ========================================================= */}
+{/* DISCLAIMER FOOTER                                         */}
+{/* ========================================================= */}
+<div className="bg-red-50 rounded-2xl p-4 flex items-start gap-3 text-xs text-[#000000] border-2 border-red-500">
+  <ShieldCheck className="w-5 h-5 text-red-600 flex-shrink-0 mt-0.5" />
+ <p>
+  <strong className="text-red-600">Disclaimer:</strong> Analisis CureLens AI merupakan <strong className="text-slate-800">alat bantu triase informasi referensial</strong> dan <strong className="text-red-600">bukan pengganti diagnosis medis resmi</strong> dokter spesialis atau instruksi apoteker berlisensi. Jika Anda mengalami gejala akut atau reaksi alergi, segera kunjungi<strong className="text-red-600"> instalasi gawat darurat terdekat</strong>.
+</p>
+</div>
+
       {/* ========================================================= */}
-      {/* DISCLAIMER FOOTER                                         */}
+      {/* POP UP DETAIL RIWAYAT                                     */}
       {/* ========================================================= */}
-      <div className="bg-[#F1F5F9] rounded-2xl p-4 flex items-start gap-3 text-xs text-[#64748B]">
-        <ShieldCheck className="w-5 h-5 text-slate-400 flex-shrink-0 mt-0.5" />
-        <p>
-          <strong className="text-slate-700">Disclaimer:</strong> Analisis CureLens AI merupakan alat bantu triase informasi referensial dan bukan pengganti diagnosis medis resmi dokter spesialis atau instruksi apoteker berlisensi. Jika Anda mengalami gejala akut atau reaksi alergi, segera kunjungi instalasi gawat darurat terdekat.
-        </p>
-      </div>
+      {selectedItem && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4"
+          onClick={() => setSelectedItem(null)}
+        >
+          <div
+            className="bg-white rounded-3xl w-full max-w-md p-6 shadow-xl space-y-4"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-start justify-between gap-3">
+              <div>
+                <h3 className="text-lg font-bold text-[#1E293B]">{selectedItem.name}</h3>
+                <p className="text-xs text-[#64748B]">Status: {selectedItem.status}</p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setSelectedItem(null)}
+                className="p-1.5 text-slate-400 hover:text-slate-700 rounded-lg transition-colors"
+                aria-label="Tutup"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <div className="bg-[#F8FAFC] border border-slate-200 rounded-2xl p-4 text-sm text-slate-600 leading-relaxed">
+              Placeholder: detail hasil analisis obat akan ditampilkan di sini.
+            </div>
+
+            <button
+              type="button"
+              onClick={() => setSelectedItem(null)}
+              className="w-full px-6 py-3 bg-[#A6DB00] hover:bg-[#95c500] text-[#1E293B] font-bold text-sm rounded-full transition-all"
+            >
+              Tutup
+            </button>
+          </div>
+        </div>
+      )}
 
     </div>
   );
