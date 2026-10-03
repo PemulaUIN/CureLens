@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useRef } from "react";
+import { useState, useRef, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import {
   Camera,
@@ -16,9 +16,16 @@ import { useFormContext } from "@/context/FormContext";
 export default function Step2Page() {
   const router = useRouter();
 
-  // Ambil profil & state penampung hasil analisis dari FormContext
+  // Ambil profil, kuota & fungsi helper dari FormContext
   const formContext = useFormContext() as any;
-  const { profile, setAnalysisResult, setFormData } = formContext;
+  const {
+    profile,
+    quota,
+    setQuota,
+    decrementQuota,
+    setAnalysisResult,
+    setFormData,
+  } = formContext;
 
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -29,6 +36,20 @@ export default function Step2Page() {
   // State backend execution
   const [isLoading, setIsLoading] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+
+  // Parsing & validasi variabel kuota dengan presisi
+  const totalQuota = typeof quota?.total === "number" ? quota.total : 5;
+  const remainingQuota = typeof quota?.remaining === "number" ? quota.remaining : 5;
+  const isQuotaExhausted = remainingQuota <= 0;
+
+  // Clean up Object URL ketika previewUrl berubah/di-unmount untuk mencegah memory leak
+  useEffect(() => {
+    return () => {
+      if (previewUrl && previewUrl.startsWith("blob:")) {
+        URL.revokeObjectURL(previewUrl);
+      }
+    };
+  }, [previewUrl]);
 
   // Handle Pemilihan File
   const handleFileChange = (file: File) => {
@@ -52,7 +73,7 @@ export default function Step2Page() {
 
   const handleRemoveFile = () => {
     setSelectedFile(null);
-    if (previewUrl) {
+    if (previewUrl && previewUrl.startsWith("blob:")) {
       URL.revokeObjectURL(previewUrl);
     }
     setPreviewUrl(null);
@@ -61,10 +82,26 @@ export default function Step2Page() {
     }
   };
 
+  // Helper untuk mengonversi File ke Base64 (agar aman disimpan di sessionStorage)
+  const fileToBase64 = (file: File): Promise<string> => {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.readAsDataURL(file);
+      reader.onload = () => resolve(reader.result as string);
+      reader.onerror = (error) => reject(error);
+    });
+  };
+
   // Fungsi Kirim Data ke Backend API Gemini & Simpan Ke State
   const handleStartAnalysis = async () => {
     if (!selectedFile) {
       alert("Silakan unggah foto obat terlebih dahulu sebelum melanjutkan!");
+      return;
+    }
+
+    // Cek sisa kuota secara ketat menggunakan variabel boolean `isQuotaExhausted`
+    if (isQuotaExhausted) {
+      setErrorMessage("Kuota harian Anda telah habis. Silakan coba lagi besok.");
       return;
     }
 
@@ -89,17 +126,22 @@ export default function Step2Page() {
 
       if (!res.ok) {
         throw new Error(
-          data.error || "Terjadi kesalahan saat menganalisis obat.",
+          data.error || "Terjadi kesalahan saat menganalisis obat."
         );
       }
 
+      // Update kuota: utamakan response dari backend, atau kurangi kuota via Context helper
+      if (data.quota && setQuota) {
+        setQuota(data.quota);
+      } else if (decrementQuota) {
+        decrementQuota();
+      }
+
       // 3. SIMPAN HASIL ANALISIS DAN FOTO KE STATE CONTEXT
-      // (a) Jika menggunakan setter spesifik
       if (setAnalysisResult) {
         setAnalysisResult(data);
       }
 
-      // (b) Jika menggunakan setFormData umum (menyimpan foto + hasil analisis)
       if (setFormData) {
         setFormData((prev: any) => ({
           ...prev,
@@ -112,8 +154,13 @@ export default function Step2Page() {
 
       // (c) Fallback simpan ke sessionStorage agar data tidak hilang saat refresh
       sessionStorage.setItem("analysisResult", JSON.stringify(data));
-      if (previewUrl) {
-        sessionStorage.setItem("imagePreview", previewUrl);
+      try {
+        const base64Image = await fileToBase64(selectedFile);
+        sessionStorage.setItem("imagePreview", base64Image);
+      } catch (err) {
+        if (previewUrl) {
+          sessionStorage.setItem("imagePreview", previewUrl);
+        }
       }
 
       // 4. Pindah ke Halaman Hasil (Step 3)
@@ -145,21 +192,26 @@ export default function Step2Page() {
           </p>
         </div>
 
-        {/* Quota Card */}
+        {/* Quota Card Dinamis */}
         <div className="bg-white rounded-2xl p-4 md:p-5 shadow-sm border border-slate-100 min-w-[280px]">
           <div className="flex items-center justify-between text-xs font-bold text-[#1E293B] mb-2">
             <span>Kuota Analisis Harian</span>
-            <span className="text-[#0F172A]">3/5 Tersisa</span>
+            <span className="text-[#0F172A]">
+              {remainingQuota}/{totalQuota} Tersisa
+            </span>
           </div>
           <div className="grid grid-cols-5 gap-1.5 mb-2">
-            <div className="h-2 rounded-full bg-[#A6DB00]"></div>
-            <div className="h-2 rounded-full bg-[#A6DB00]"></div>
-            <div className="h-2 rounded-full bg-[#A6DB00]"></div>
-            <div className="h-2 rounded-full bg-[#E2E8F0]"></div>
-            <div className="h-2 rounded-full bg-[#E2E8F0]"></div>
+            {Array.from({ length: totalQuota }).map((_, index) => (
+              <div
+                key={index}
+                className={`h-2 rounded-full ${
+                  index < remainingQuota ? "bg-[#A6DB00]" : "bg-[#E2E8F0]"
+                }`}
+              />
+            ))}
           </div>
           <p className="text-[11px] text-[#94A3B8] font-medium">
-            Maksimal 5x pemindaian aman per hari
+            Maksimal {totalQuota}x pemindaian aman per hari
           </p>
         </div>
       </div>
@@ -203,7 +255,7 @@ export default function Step2Page() {
           </div>
           <div>
             <span className="block text-[10px] font-bold text-[#94A3B8] uppercase tracking-wider">
-              SINTESIS KOMPUTASI
+              SISTEM KOMPUTASI
             </span>
             <span className="text-sm font-bold text-[#64748B]">
               Langkah 3: Analisis AI
@@ -215,7 +267,7 @@ export default function Step2Page() {
       {/* ERROR ALERT DISPLAY */}
       {errorMessage && (
         <div className="p-4 bg-red-50 border border-red-200 text-red-700 text-sm rounded-2xl font-medium">
-          ⚠️ {errorMessage}
+          ⚠ {errorMessage}
         </div>
       )}
 
@@ -273,9 +325,9 @@ export default function Step2Page() {
 
             <button
               type="button"
-              disabled={isLoading}
+              disabled={isLoading || isQuotaExhausted}
               onClick={() => fileInputRef.current?.click()}
-              className="mt-2 px-6 py-3 bg-[#27272A] hover:bg-[#18181B] text-white font-bold text-sm rounded-full transition-all flex items-center gap-2 shadow-sm disabled:opacity-50"
+              className="mt-2 px-6 py-3 bg-[#27272A] hover:bg-[#18181B] text-white font-bold text-sm rounded-full transition-all flex items-center gap-2 shadow-sm disabled:opacity-50 disabled:cursor-not-allowed"
             >
               Pilih File dari Perangkat
             </button>
@@ -333,10 +385,10 @@ export default function Step2Page() {
 
         <button
           type="button"
-          disabled={!selectedFile || isLoading}
+          disabled={!selectedFile || isLoading || isQuotaExhausted}
           onClick={handleStartAnalysis}
           className={`px-7 py-3.5 bg-[#A6DB00] hover:bg-[#95c500] text-[#0F172A] font-extrabold text-sm rounded-full transition-all flex items-center gap-2.5 shadow-sm ${
-            !selectedFile || isLoading
+            !selectedFile || isLoading || isQuotaExhausted
               ? "opacity-50 cursor-not-allowed"
               : "hover:scale-[1.02] active:scale-[0.98]"
           }`}

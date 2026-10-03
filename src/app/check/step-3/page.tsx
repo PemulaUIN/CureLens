@@ -19,57 +19,157 @@ import {
 } from "lucide-react";
 import { useFormContext } from "@/context/FormContext";
 
+export interface AnalysisResponse {
+  detected_medicine_name: string;
+  batch_number: string;
+  dosage_form: string;
+  ai_confidence_level: string;
+  active_ingredients_text: string;
+  active_ingredients_list: string[];
+  safety_status: "Aman" | "Sebaiknya Dihindari" | "Tidak Aman";
+  medical_explanation: string;
+  recommendations: string;
+}
+
+export interface AnalyzeApiResponse extends AnalysisResponse {
+  quota?: {
+    remaining: number;
+    total: number;
+  };
+  historyItem?: {
+    id: string;
+    timestamp: string;
+    dateFormatted: string;
+    medicineName: string;
+    dosageForm: string;
+    safetyStatus: string;
+    badgeLabel: string;
+  };
+  error?: string;
+  message?: string;
+}
+
+interface SelectedItem {
+  name: string;
+  status: string;
+  detail?: string;
+}
+
 export default function Step3Page() {
   const router = useRouter();
   const formContext = useFormContext() as any;
-  const { formData, analysisResult } = formContext || {};
+  const { formData, analysisResult, quota, setQuota, history, setHistory } = formContext || {};
 
-  const [data, setData] = useState<any>(null);
+  const [data, setData] = useState<AnalysisResponse | null>(null);
   const [imagePreview, setImagePreview] = useState<string | null>(null);
   const [isHydrated, setIsHydrated] = useState(false);
-  const [selectedItem, setSelectedItem] = useState<{
-    name: string;
-    status: string;
-    detail?: string;
-  } | null>(null);
+  const [selectedItem, setSelectedItem] = useState<SelectedItem | null>(null);
+
+  // Sync kuota jika dikirim bersamaan dalam response data hasil analisis (misal dari context/formData/sessionStorage)
+  useEffect(() => {
+    async function fetchQuota() {
+      try {
+        const res = await fetch("/api/analyze", { method: "GET" });
+        if (res.ok) {
+          const resData: AnalyzeApiResponse = await res.json();
+          if (resData.quota && setQuota) {
+            setQuota(resData.quota);
+          }
+        }
+      } catch (err) {
+        // Fallback jika endpoint GET belum diimplementasikan
+      }
+    }
+
+    // Ambil kuota terbaru dari backend jika belum ada di context
+    if (!quota || typeof quota.remaining !== "number") {
+      fetchQuota();
+    }
+  }, [quota, setQuota]);
 
   useEffect(() => {
-    // 1. Ambil data dari Context atau sessionStorage
-    const resultData =
-      analysisResult || formData?.analysisResult || formData?.analysis;
+    let objectUrlToRevoke: string | null = null;
 
-    const savedImage =
-      formData?.imagePreview ||
-      (formData?.image && typeof formData.image === "string"
-        ? formData.image
-        : null) ||
-      sessionStorage.getItem("imagePreview");
+    // 1. Ambil data hasil analisis dari Context atau sessionStorage
+    const rawResult = analysisResult || formData?.analysisResult || formData?.analysis;
 
-    if (resultData) {
-      setData(resultData);
+    if (rawResult) {
+      setData(rawResult);
+      // Jika hasil analisis berhasil dan membawa data kuota terbaru dari API backend
+      if (rawResult.quota && setQuota) {
+        setQuota(rawResult.quota);
+      }
     } else {
       const stored = sessionStorage.getItem("analysisResult");
       if (stored) {
         try {
-          setData(JSON.parse(stored));
+          const parsed = JSON.parse(stored);
+          setData(parsed);
+          if (parsed.quota && setQuota) {
+            setQuota(parsed.quota);
+          }
         } catch (e) {
           console.error("Gagal parse sessionStorage", e);
         }
       }
     }
 
+    // 2. Ambil gambar preview dengan penanganan tipe data yang lengkap
+    const savedImage =
+      formData?.imagePreview ||
+      (typeof formData?.image === "string" ? formData.image : null) ||
+      sessionStorage.getItem("imagePreview");
+
     if (savedImage) {
       setImagePreview(savedImage);
+    } else if (formData?.image instanceof File || formData?.image instanceof Blob) {
+      // Konversi File/Blob ke Data URL (Base64) agar stabil dan tidak pecah
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        const base64String = reader.result as string;
+        setImagePreview(base64String);
+        try {
+          sessionStorage.setItem("imagePreview", base64String);
+        } catch (e) {
+          console.warn("Gagal menyimpan gambar ke sessionStorage", e);
+        }
+      };
+      reader.readAsDataURL(formData.image);
     } else if (formData?.image && typeof formData.image === "object") {
       try {
-        setImagePreview(URL.createObjectURL(formData.image));
+        const url = URL.createObjectURL(formData.image);
+        objectUrlToRevoke = url;
+        setImagePreview(url);
       } catch (e) {
         console.error("Gagal createObjectURL", e);
       }
     }
 
     setIsHydrated(true);
-  }, [analysisResult, formData]);
+
+    // Cleanup object URL hanya jika URL lokal sementara dibuat
+    return () => {
+      if (objectUrlToRevoke) {
+        URL.revokeObjectURL(objectUrlToRevoke);
+      }
+    };
+  }, [analysisResult, formData, setQuota]);
+
+  // Handler Hapus Riwayat
+  const handleDeleteHistory = (idToDelete: string) => {
+    if (!setHistory) return;
+    const updatedHistory = (history || []).filter((item: any) => item.id !== idToDelete);
+    setHistory(updatedHistory);
+  };
+
+  // Handler untuk Cek Obat Lagi (Cek sisa kuota)
+  const handleCheckAgain = () => {
+    if (remainingQuota <= 0) {
+      alert("Kuota analisis harian Anda telah habis (0 tersisa). Silakan coba lagi besok.");
+      return;
+    }
+    router.push("/check/step-1");
+  };
 
   // Tampilan Loading/Hydration singkat
   if (!isHydrated) {
@@ -107,28 +207,33 @@ export default function Step3Page() {
   }
 
   // Tentukan Kategori Status Keamanan
-  const rawStatus = String(data.safety_status || "").toLowerCase();
   let statusCategory: "SAFE" | "WARNING" | "UNSAFE" = "UNSAFE";
 
-  if (rawStatus.includes("aman") && !rawStatus.includes("tidak")) {
+  if (data.safety_status === "Aman") {
     statusCategory = "SAFE";
-  } else if (rawStatus.includes("hindari") || rawStatus.includes("perhatian")) {
+  } else if (data.safety_status === "Sebaiknya Dihindari") {
     statusCategory = "WARNING";
   } else {
     statusCategory = "UNSAFE";
   }
 
-  // Ambil daftar riwayat dari context atau buat item dari analisis saat ini
-  const historyList = formData?.history || [
-    {
-      id: "1",
-      name: data.detected_medicine_name || "Obat Terdeteksi",
-      time: `Sediaan: ${data.dosage_form || "Umum"}`,
-      status: data.status_badge_label || data.safety_status || "Teranalisis",
-      category: statusCategory,
-      detail: data.medical_explanation,
-    },
-  ];
+  // Gunakan riwayat dari Context (yang sudah tersimpan di localStorage via FormProvider)
+  const historyList = history && history.length > 0 
+    ? history 
+    : [
+        {
+          id: "1",
+          name: data.detected_medicine_name || "Obat Terdeteksi",
+          time: `Sediaan: ${data.dosage_form || "Umum"}`,
+          status: data.safety_status,
+          category: statusCategory,
+          detail: data.medical_explanation,
+        },
+      ];
+
+  // Nilai kuota dinamis langsung dari Context / FormProvider
+  const remainingQuota = quota?.remaining ?? 5;
+  const totalQuota = quota?.total ?? 5;
 
   return (
     <div className="w-full max-w-5xl mx-auto space-y-6 pb-12 font-sans text-[#1E293B]">
@@ -150,34 +255,38 @@ export default function Step3Page() {
           </p>
         </div>
 
-        {/* Quota Card */}
-        <div className="bg-white border border-slate-100 rounded-2xl p-4 shadow-sm min-w-[280px] w-full lg:w-auto">
-          <div className="flex justify-between items-center mb-2">
-            <span className="text-xs font-bold text-[#1E293B]">
-              Kuota Analisis Harian
-            </span>
-            <span className="text-xs font-extrabold text-[#1E293B]">
-              3 / 5 Tersisa
+        {/* Quota Card Dinamis */}
+        <div className="bg-white rounded-2xl p-4 md:p-5 shadow-sm border border-slate-100 min-w-[280px] w-full lg:w-auto">
+          <div className="flex items-center justify-between text-xs font-bold text-[#1E293B] mb-2">
+            <span>Kuota Analisis Harian</span>
+            <span className="text-[#0F172A]">
+              {remainingQuota}/{totalQuota} Tersisa
             </span>
           </div>
-          <div className="flex gap-1 mb-2">
-            <div className="h-2 flex-1 bg-[#A6DB00] rounded-full"></div>
-            <div className="h-2 flex-1 bg-[#A6DB00] rounded-full"></div>
-            <div className="h-2 flex-1 bg-[#A6DB00] rounded-full"></div>
-            <div className="h-2 flex-1 bg-slate-200 rounded-full"></div>
-            <div className="h-2 flex-1 bg-slate-200 rounded-full"></div>
+          <div className="grid grid-cols-5 gap-1.5 mb-2">
+            {Array.from({ length: totalQuota }).map((_, index) => (
+              <div
+                key={index}
+                className={`h-2 rounded-full ${
+                  index < remainingQuota ? "bg-[#A6DB00]" : "bg-[#E2E8F0]"
+                }`}
+              />
+            ))}
           </div>
-          <p className="text-[11px] text-[#64748B]">
-            Maksimal 5x pemindaian aman per hari.
+          <p className="text-[11px] text-[#94A3B8] font-medium">
+            Maksimal {totalQuota}x pemindaian aman per hari
           </p>
         </div>
       </div>
 
       {/* ========================================================= */}
-      {/* STEPPER HEADER                                           */}
+      {/* STEPPER HEADER                                            */}
       {/* ========================================================= */}
       <div className="bg-white rounded-2xl p-4 shadow-sm border border-slate-100 grid grid-cols-1 md:grid-cols-3 gap-4">
-        <div className="flex items-center gap-3 p-3 rounded-xl opacity-60">
+        <div
+          onClick={() => router.push("/check/step-1")}
+          className="flex items-center gap-3 p-3 rounded-xl cursor-pointer hover:bg-slate-50 transition-all opacity-60"
+        >
           <div className="w-8 h-8 rounded-full bg-slate-200 text-slate-600 font-bold flex items-center justify-center text-sm">
             1
           </div>
@@ -191,7 +300,10 @@ export default function Step3Page() {
           </div>
         </div>
 
-        <div className="flex items-center gap-3 p-3 rounded-xl opacity-60">
+        <div
+          onClick={() => router.push("/check/step-2")}
+          className="flex items-center gap-3 p-3 rounded-xl cursor-pointer hover:bg-slate-50 transition-all opacity-60"
+        >
           <div className="w-8 h-8 rounded-full bg-slate-200 text-slate-600 font-bold flex items-center justify-center text-sm">
             2
           </div>
@@ -270,7 +382,7 @@ export default function Step3Page() {
                   statusCategory === "UNSAFE" ? "bg-white" : "bg-red-500"
                 }`}
               ></span>
-              Tidak Aman (Terdeteksi)
+              Tidak Aman
             </span>
           </div>
         </div>
@@ -285,7 +397,7 @@ export default function Step3Page() {
                 FOTO KEMASAN TERUNGGAH
               </div>
               <span className="px-2 py-0.5 bg-[#A6DB00] text-[#1E293B] text-[10px] font-bold rounded-full">
-                {data.ai_confidence_level || "95%"}
+                {data.ai_confidence_level}
               </span>
             </div>
 
@@ -309,13 +421,8 @@ export default function Step3Page() {
           {/* Nama Obat & Kandungan OCR */}
           <div className="md:col-span-8 space-y-4">
             <div className="bg-[#F8FAFC] border border-slate-200 rounded-2xl p-4">
-              <div className="flex justify-between items-center mb-1">
-                <span className="text-[11px] font-bold text-[#64748B] tracking-wider uppercase">
-                  NAMA OBAT & VARIAN
-                </span>
-                <span className="text-xs text-[#64748B]">
-                  Batch: {data.batch_number || "Tidak Terbaca"}
-                </span>
+              <div className="text-[11px] font-bold text-[#64748B] tracking-wider uppercase mb-1">
+                NAMA OBAT & VARIAN
               </div>
               <h3 className="text-xl font-bold text-[#1E293B]">
                 {data.detected_medicine_name || "Tidak Teridentifikasi"}
@@ -347,8 +454,8 @@ export default function Step3Page() {
             statusCategory === "UNSAFE"
               ? "bg-red-50 border-red-100"
               : statusCategory === "WARNING"
-                ? "bg-amber-50 border-amber-100"
-                : "bg-emerald-50 border-emerald-100"
+              ? "bg-amber-50 border-amber-100"
+              : "bg-emerald-50 border-emerald-100"
           }`}
         >
           <div
@@ -356,8 +463,8 @@ export default function Step3Page() {
               statusCategory === "UNSAFE"
                 ? "text-red-600"
                 : statusCategory === "WARNING"
-                  ? "text-amber-700"
-                  : "text-emerald-700"
+                ? "text-amber-700"
+                : "text-emerald-700"
             }`}
           >
             {statusCategory === "UNSAFE" ? (
@@ -429,18 +536,18 @@ export default function Step3Page() {
                       isUnsafe
                         ? "bg-red-100 text-red-600"
                         : isWarning
-                          ? "bg-amber-100 text-amber-600"
-                          : "bg-emerald-100 text-emerald-600"
+                        ? "bg-amber-100 text-amber-600"
+                        : "bg-emerald-100 text-emerald-600"
                     }`}
                   >
                     💊
                   </div>
                   <div>
                     <h4 className="font-bold text-sm text-[#1E293B]">
-                      {item.name}
+                      {item.name || item.medicineName}
                     </h4>
                     <p className="text-xs text-[#64748B]">
-                      {item.time || "Hari ini • Sediaan Obat"}
+                      {item.time || item.dateFormatted || "Hari ini • Sediaan Obat"}
                     </p>
                   </div>
                 </div>
@@ -451,26 +558,30 @@ export default function Step3Page() {
                       isUnsafe
                         ? "bg-red-600 text-white"
                         : isWarning
-                          ? "bg-amber-200 text-amber-800"
-                          : "bg-emerald-500 text-white"
+                        ? "bg-amber-200 text-amber-800"
+                        : "bg-emerald-500 text-white"
                     }`}
                   >
-                    ● {item.status}
+                    ● {item.status || item.safetyStatus}
                   </span>
                   <button
                     type="button"
                     onClick={() =>
                       setSelectedItem({
-                        name: item.name,
-                        status: item.status,
-                        detail: item.detail,
+                        name: item.name || item.medicineName,
+                        status: item.status || item.safetyStatus,
+                        detail: item.detail || item.medical_explanation,
                       })
                     }
                     className="text-xs font-bold text-[#1E293B] hover:underline px-2 py-1"
                   >
                     Lihat Detail &gt;
                   </button>
-                  <button className="p-1.5 text-slate-400 hover:text-red-500 rounded-lg transition-colors">
+                  <button 
+                    type="button"
+                    onClick={() => handleDeleteHistory(item.id)}
+                    className="p-1.5 text-slate-400 hover:text-red-500 rounded-lg transition-colors"
+                  >
                     <Trash2 className="w-4 h-4" />
                   </button>
                 </div>
@@ -505,7 +616,7 @@ export default function Step3Page() {
 
           <button
             type="button"
-            onClick={() => router.push("/check/step-1")}
+            onClick={handleCheckAgain}
             className="w-full sm:w-auto px-6 py-3 bg-[#A6DB00] hover:bg-[#95c500] text-[#1E293B] font-bold text-sm rounded-full transition-all flex items-center justify-center gap-2 shadow-sm"
           >
             <RotateCcw className="w-4 h-4" />
