@@ -111,7 +111,6 @@ export const FormProvider = ({ children }: { children: React.ReactNode }) => {
         setAnalysisResult,
         quota,
         setQuota,
-        decrementQuota,
         history,
         setHistory,
         addHistoryItem,

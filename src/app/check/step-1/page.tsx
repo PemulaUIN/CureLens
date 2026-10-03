@@ -45,7 +45,7 @@ export default function Step1Page() {
         profile.medicalConditions.split(', ').map((s) => s.trim()).filter(Boolean)
       );
     } else {
-      setSelectedConditions(['Tidak Ada']);
+      setSelectedConditions([]);
     }
 
     if (profile.allergies) {
@@ -53,7 +53,7 @@ export default function Step1Page() {
         profile.allergies.split(', ').map((s) => s.trim()).filter(Boolean)
       );
     } else {
-      setSelectedAllergies(['Tidak Ada']);
+      setSelectedAllergies([]);
     }
   }, [profile.medicalConditions, profile.allergies]);
 
@@ -61,7 +61,7 @@ export default function Step1Page() {
   const toggleCondition = (item: string) => {
     if (selectedConditions.includes(item)) {
       const updated = selectedConditions.filter((c) => c !== item);
-      setSelectedConditions(updated.length === 0 ? ['Tidak Ada'] : updated);
+      setSelectedConditions(updated);
     } else {
       if (item === 'Tidak Ada') {
         setSelectedConditions(['Tidak Ada']);
@@ -88,7 +88,7 @@ export default function Step1Page() {
   const toggleAllergy = (item: string) => {
     if (selectedAllergies.includes(item)) {
       const updated = selectedAllergies.filter((a) => a !== item);
-      setSelectedAllergies(updated.length === 0 ? ['Tidak Ada'] : updated);
+      setSelectedAllergies(updated);
     } else {
       if (item === 'Tidak Ada') {
         setSelectedAllergies(['Tidak Ada']);
@@ -124,9 +124,14 @@ export default function Step1Page() {
       return;
     }
 
-    let finalConditions = [...selectedConditions];
-    let finalAllergies = [...selectedAllergies];
+    // 1. Validasi Usia
+    if (!profile.age) {
+      alert('Silakan isi usia pasien terlebih dahulu.');
+      return;
+    }
 
+    // Hitung pilihan kondisi termasuk input kustom yang belum ditekan tombol "Tambah"
+    let finalConditions = [...selectedConditions];
     if (customCondition.trim()) {
       finalConditions = finalConditions.filter((c) => c !== 'Tidak Ada');
       if (!finalConditions.includes(customCondition.trim())) {
@@ -134,6 +139,14 @@ export default function Step1Page() {
       }
     }
 
+    // 2. Validasi Riwayat Penyakit
+    if (finalConditions.length === 0) {
+      alert('Silakan pilih atau tambahkan riwayat penyakit (atau pilih "Tidak Ada").');
+      return;
+    }
+
+    // Hitung pilihan alergi termasuk input kustom yang belum ditekan tombol "Tambah"
+    let finalAllergies = [...selectedAllergies];
     if (customAllergy.trim()) {
       finalAllergies = finalAllergies.filter((a) => a !== 'Tidak Ada');
       if (!finalAllergies.includes(customAllergy.trim())) {
@@ -141,10 +154,16 @@ export default function Step1Page() {
       }
     }
 
+    // 3. Validasi Riwayat Alergi Obat
+    if (finalAllergies.length === 0) {
+      alert('Silakan pilih atau tambahkan riwayat alergi obat (atau pilih "Tidak Ada").');
+      return;
+    }
+
     setProfile({
       ...profile,
-      medicalConditions: finalConditions.length > 0 ? finalConditions.join(', ') : 'Tidak Ada',
-      allergies: finalAllergies.length > 0 ? finalAllergies.join(', ') : 'Tidak Ada',
+      medicalConditions: finalConditions.join(', '),
+      allergies: finalAllergies.join(', '),
     });
 
     router.push('/check/step-2');
