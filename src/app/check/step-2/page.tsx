@@ -15,14 +15,12 @@ import { useFormContext } from "@/context/FormContext";
 
 export default function Step2Page() {
   const router = useRouter();
-
-  // Ambil profil, kuota & fungsi helper dari FormContext
   const formContext = useFormContext() as any;
   const {
     profile,
     quota,
     setQuota,
-    decrementQuota,
+    setSelectedImage,
     setAnalysisResult,
     setFormData,
   } = formContext;
@@ -32,17 +30,14 @@ export default function Step2Page() {
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const [isDragging, setIsDragging] = useState(false);
-
-  // State backend execution
   const [isLoading, setIsLoading] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
-  // Parsing & validasi variabel kuota dengan presisi
   const totalQuota = typeof quota?.total === "number" ? quota.total : 5;
-  const remainingQuota = typeof quota?.remaining === "number" ? quota.remaining : 5;
+  const remainingQuota =
+    typeof quota?.remaining === "number" ? quota.remaining : 5;
   const isQuotaExhausted = remainingQuota <= 0;
 
-  // Clean up Object URL ketika previewUrl berubah/di-unmount untuk mencegah memory leak
   useEffect(() => {
     return () => {
       if (previewUrl && previewUrl.startsWith("blob:")) {
@@ -51,12 +46,11 @@ export default function Step2Page() {
     };
   }, [previewUrl]);
 
-  // Handle Pemilihan File
   const handleFileChange = (file: File) => {
     if (file && file.size <= 10 * 1024 * 1024) {
-      // Max 10MB
       setSelectedFile(file);
-      setPreviewUrl(URL.createObjectURL(file));
+      const blobUrl = URL.createObjectURL(file);
+      setPreviewUrl(blobUrl);
       setErrorMessage(null);
     } else {
       alert("Ukuran file maksimal adalah 10MB!");
@@ -82,7 +76,6 @@ export default function Step2Page() {
     }
   };
 
-  // Helper untuk mengonversi File ke Base64 (agar aman disimpan di sessionStorage)
   const fileToBase64 = (file: File): Promise<string> => {
     return new Promise((resolve, reject) => {
       const reader = new FileReader();
@@ -92,16 +85,16 @@ export default function Step2Page() {
     });
   };
 
-  // Fungsi Kirim Data ke Backend API Gemini & Simpan Ke State
   const handleStartAnalysis = async () => {
     if (!selectedFile) {
       alert("Silakan unggah foto obat terlebih dahulu sebelum melanjutkan!");
       return;
     }
 
-    // Cek sisa kuota secara ketat menggunakan variabel boolean `isQuotaExhausted`
     if (isQuotaExhausted) {
-      setErrorMessage("Kuota harian Anda telah habis. Silakan coba lagi besok.");
+      setErrorMessage(
+        "Kuota harian Anda telah habis. Silakan coba lagi besok.",
+      );
       return;
     }
 
@@ -109,14 +102,21 @@ export default function Step2Page() {
     setErrorMessage(null);
 
     try {
-      // 1. Buat Payload FormData
+      // 1. Konversi Gambar ke Base64
+      const base64Image = await fileToBase64(selectedFile);
+
+      if (setSelectedImage) {
+        setSelectedImage(base64Image);
+      }
+
+      // 2. Buat Payload FormData
       const formData = new FormData();
       formData.append("image", selectedFile);
       formData.append("age", profile?.age || "");
       formData.append("medicalConditions", profile?.medicalConditions || "");
       formData.append("allergies", profile?.allergies || "");
 
-      // 2. Panggil API Route Backend (/api/analyze)
+      // 3. Panggil API Route Backend
       const res = await fetch("/api/analyze", {
         method: "POST",
         body: formData,
@@ -126,18 +126,15 @@ export default function Step2Page() {
 
       if (!res.ok) {
         throw new Error(
-          data.error || "Terjadi kesalahan saat menganalisis obat."
+          data.error || "Terjadi kesalahan saat menganalisis obat.",
         );
       }
 
-      // Update kuota: utamakan response dari backend, atau kurangi kuota via Context helper
+      // 4. Update State Context
       if (data.quota && setQuota) {
         setQuota(data.quota);
-      } else if (decrementQuota) {
-        decrementQuota();
       }
 
-      // 3. SIMPAN HASIL ANALISIS DAN FOTO KE STATE CONTEXT
       if (setAnalysisResult) {
         setAnalysisResult(data);
       }
@@ -146,36 +143,24 @@ export default function Step2Page() {
         setFormData((prev: any) => ({
           ...prev,
           image: selectedFile,
-          imagePreview: previewUrl,
+          imagePreview: base64Image,
           analysisResult: data,
           analysis: data,
         }));
       }
 
-      // (c) Fallback simpan ke sessionStorage agar data tidak hilang saat refresh
-      sessionStorage.setItem("analysisResult", JSON.stringify(data));
-      try {
-        const base64Image = await fileToBase64(selectedFile);
-        sessionStorage.setItem("imagePreview", base64Image);
-      } catch (err) {
-        if (previewUrl) {
-          sessionStorage.setItem("imagePreview", previewUrl);
-        }
-      }
-
-      // 4. Pindah ke Halaman Hasil (Step 3)
+      // 5. Pindah Halaman Langsung
       router.push("/check/step-3");
     } catch (err: any) {
       console.error("Analysis error:", err);
       setErrorMessage(err.message || "Gagal terhubung ke server.");
-    } finally {
       setIsLoading(false);
     }
   };
 
   return (
     <div className="w-full max-w-6xl mx-auto space-y-8 font-sans text-[#1E293B]">
-      {/* PAGE HEADER & DAILY QUOTA CARD */}
+      {/* HEADER & QUOTA */}
       <div className="flex flex-col md:flex-row md:items-start justify-between gap-6">
         <div className="space-y-3 max-w-2xl">
           <div className="inline-flex items-center gap-1.5 px-3 py-1 bg-[#A6DB00] text-[#0F172A] rounded-full text-[11px] font-extrabold uppercase tracking-wider">
@@ -192,7 +177,6 @@ export default function Step2Page() {
           </p>
         </div>
 
-        {/* Quota Card Dinamis */}
         <div className="bg-white rounded-2xl p-4 md:p-5 shadow-sm border border-slate-100 min-w-[280px]">
           <div className="flex items-center justify-between text-xs font-bold text-[#1E293B] mb-2">
             <span>Kuota Analisis Harian</span>
@@ -216,7 +200,7 @@ export default function Step2Page() {
         </div>
       </div>
 
-      {/* STEPPER / PROGRESS HEADER */}
+      {/* STEPPER PROGRESS */}
       <div className="bg-white rounded-2xl p-2 md:p-3 shadow-sm border border-slate-100 grid grid-cols-1 md:grid-cols-3 gap-2">
         <div
           onClick={() => !isLoading && router.push("/check/step-1")}
@@ -264,14 +248,13 @@ export default function Step2Page() {
         </div>
       </div>
 
-      {/* ERROR ALERT DISPLAY */}
       {errorMessage && (
         <div className="p-4 bg-red-50 border border-red-200 text-red-700 text-sm rounded-2xl font-medium">
           ⚠ {errorMessage}
         </div>
       )}
 
-      {/* UPLOAD SECTION (DROPZONE AREA) */}
+      {/* UPLOAD ZONE */}
       <div className="bg-white rounded-3xl p-6 md:p-10 shadow-sm border border-slate-100">
         <div className="mb-8">
           <h2 className="text-2xl md:text-3xl font-bold text-[#0F172A]">
@@ -333,7 +316,6 @@ export default function Step2Page() {
             </button>
           </div>
         ) : (
-          /* Preview State */
           <div className="relative border border-slate-200 rounded-2xl p-5 bg-[#F8FAFC] flex flex-col md:flex-row items-center gap-6">
             <div className="w-full md:w-52 h-40 relative rounded-xl overflow-hidden bg-slate-200 shrink-0 shadow-inner">
               <img

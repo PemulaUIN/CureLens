@@ -18,20 +18,36 @@ const initialProfile: Profile = {
 const FormContext = createContext<FormContextType | null>(null);
 
 export const FormProvider = ({ children }: { children: React.ReactNode }) => {
-  const [profile, setProfile] = useState<Profile>(initialProfile);
-  const [selectedImage, setSelectedImage] = useState<string | null>(null);
-  const [analysisResult, setAnalysisResult] = useState<AnalysisResponse | null>(null);
-  const [quota, setQuotaState] = useState<QuotaType>({ remaining: 5, total: 5 });
+  const [profile, setProfileState] = useState<Profile>(initialProfile);
+  const [selectedImage, setSelectedImageState] = useState<string | null>(null);
+  const [analysisResult, setAnalysisResultState] =
+    useState<AnalysisResponse | null>(null);
+  const [quota, setQuotaState] = useState<QuotaType>({
+    remaining: 5,
+    total: 5,
+  });
   const [history, setHistory] = useState<HistoryItem[]>([]);
 
-  // 1. Synchronize Kuota Harian & Riwayat dari localStorage saat pertama kali dimuat
   useEffect(() => {
-    const todayStr = new Date().toISOString().split("T")[0]; // YYYY-MM-DD
+    if (typeof window === "undefined") return;
+
+    const todayStr = new Date().toISOString().split("T")[0];
     const savedQuotaDate = localStorage.getItem("curelens_quota_date");
     const savedQuota = localStorage.getItem("curelens_quota");
     const savedHistory = localStorage.getItem("curelens_history");
+    const savedImage = localStorage.getItem("curelens_saved_image");
+    const savedAnalysis = localStorage.getItem("curelens_analysis_result");
+    const savedProfile = localStorage.getItem("curelens_profile");
 
-    // Reset kuota otomatis jika tanggal berganti (hari baru)
+    if (savedProfile) {
+      try {
+        setProfileState(JSON.parse(savedProfile));
+      } catch (e) {
+        console.error("Gagal membaca profil dari localStorage:", e);
+      }
+    }
+
+    // Reset kuota jika hari berganti
     if (savedQuotaDate !== todayStr) {
       const freshQuota = { remaining: 5, total: 5 };
       setQuotaState(freshQuota);
@@ -45,7 +61,6 @@ export const FormProvider = ({ children }: { children: React.ReactNode }) => {
       }
     }
 
-    // Load riwayat analisis lama
     if (savedHistory) {
       try {
         setHistory(JSON.parse(savedHistory));
@@ -53,31 +68,62 @@ export const FormProvider = ({ children }: { children: React.ReactNode }) => {
         console.error("Gagal membaca riwayat:", e);
       }
     }
+
+    if (savedImage) setSelectedImageState(savedImage);
+
+    if (savedAnalysis) {
+      try {
+        setAnalysisResultState(JSON.parse(savedAnalysis));
+      } catch (e) {
+        console.error("Gagal membaca hasil analisis:", e);
+      }
+    }
   }, []);
 
-  // Update kuota & simpan ke localStorage
+  const setProfile = (newProfile: React.SetStateAction<Profile>) => {
+    setProfileState((prev) => {
+      const updated =
+        typeof newProfile === "function" ? newProfile(prev) : newProfile;
+      localStorage.setItem("curelens_profile", JSON.stringify(updated));
+      return updated;
+    });
+  };
+
+  const setSelectedImage = (image: string | null) => {
+    setSelectedImageState(image);
+    if (image) {
+      localStorage.setItem("curelens_saved_image", image);
+    } else {
+      localStorage.removeItem("curelens_saved_image");
+    }
+  };
+
+  const setAnalysisResult = (data: AnalysisResponse | null) => {
+    setAnalysisResultState(data);
+    if (data) {
+      localStorage.setItem("curelens_analysis_result", JSON.stringify(data));
+    } else {
+      localStorage.removeItem("curelens_analysis_result");
+    }
+  };
+
+  // Hanya perbarui kuota jika menerima data baru secara eksplisit
   const setQuota = (newQuota: QuotaType) => {
     setQuotaState(newQuota);
     localStorage.setItem("curelens_quota", JSON.stringify(newQuota));
   };
 
-  // Fungsi khusus pemotong kuota (dipanggil saat analisis sukses di Step 3)
-  const decrementQuota = () => {
-    setQuotaState((prev) => {
-      const updated = {
-        ...prev,
-        remaining: Math.max(0, prev.remaining - 1),
-      };
-      localStorage.setItem("curelens_quota", JSON.stringify(updated));
-      return updated;
-    });
-  };
-
-  // Tambah item ke riwayat (tanpa menghapus riwayat lama)
   const addHistoryItem = (newItem: HistoryItem) => {
     setHistory((prevHistory) => {
-      const filtered = prevHistory.filter((item) => item.id !== newItem.id);
-      const updated = [newItem, ...filtered];
+      const exists = prevHistory.some(
+        (item) =>
+          item.id === newItem.id ||
+          (item.medicineName === newItem.medicineName &&
+            item.detail === newItem.detail),
+      );
+      if (exists) return prevHistory;
+
+      const updated = [newItem, ...prevHistory];
       localStorage.setItem("curelens_history", JSON.stringify(updated));
       return updated;
     });
@@ -91,11 +137,13 @@ export const FormProvider = ({ children }: { children: React.ReactNode }) => {
     });
   };
 
-  // Reset form hanya untuk inputan aktif (tidak menghapus riwayat)
   const resetForm = () => {
-    setProfile(initialProfile);
-    setSelectedImage(null);
-    setAnalysisResult(null);
+    setProfileState(initialProfile);
+    setSelectedImageState(null);
+    setAnalysisResultState(null);
+    localStorage.removeItem("curelens_profile");
+    localStorage.removeItem("curelens_saved_image");
+    localStorage.removeItem("curelens_analysis_result");
   };
 
   return (

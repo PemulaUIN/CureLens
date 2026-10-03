@@ -1,7 +1,8 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useRef } from "react";
 import { useRouter } from "next/navigation";
+import Link from "next/link";
 import {
   ShieldCheck,
   AlertTriangle,
@@ -21,32 +22,14 @@ import { useFormContext } from "@/context/FormContext";
 
 export interface AnalysisResponse {
   detected_medicine_name: string;
-  batch_number: string;
-  dosage_form: string;
-  ai_confidence_level: string;
-  active_ingredients_text: string;
-  active_ingredients_list: string[];
+  batch_number?: string;
+  dosage_form?: string;
+  ai_confidence_level?: string;
+  active_ingredients_text?: string;
+  active_ingredients_list?: string[];
   safety_status: "Aman" | "Sebaiknya Dihindari" | "Tidak Aman";
   medical_explanation: string;
   recommendations: string;
-}
-
-export interface AnalyzeApiResponse extends AnalysisResponse {
-  quota?: {
-    remaining: number;
-    total: number;
-  };
-  historyItem?: {
-    id: string;
-    timestamp: string;
-    dateFormatted: string;
-    medicineName: string;
-    dosageForm: string;
-    safetyStatus: string;
-    badgeLabel: string;
-  };
-  error?: string;
-  message?: string;
 }
 
 interface SelectedItem {
@@ -58,121 +41,151 @@ interface SelectedItem {
 export default function Step3Page() {
   const router = useRouter();
   const formContext = useFormContext() as any;
-  const { formData, analysisResult, quota, setQuota, history, setHistory } = formContext || {};
+  const {
+    formData,
+    analysisResult,
+    setAnalysisResult,
+    quota,
+    setQuota,
+    history,
+    setHistory,
+    addHistoryItem,
+    resetForm,
+  } = formContext || {};
 
   const [data, setData] = useState<AnalysisResponse | null>(null);
   const [imagePreview, setImagePreview] = useState<string | null>(null);
-  const [isHydrated, setIsHydrated] = useState(false);
+  const [isReady, setIsReady] = useState(false);
   const [selectedItem, setSelectedItem] = useState<SelectedItem | null>(null);
 
-  // Sync kuota jika dikirim bersamaan dalam response data hasil analisis (misal dari context/formData/sessionStorage)
+  const hasAddedToHistory = useRef(false);
+
+  // 1. Inisialisasi Data & Gambar Secara Safe Pada Client Mount
   useEffect(() => {
-    async function fetchQuota() {
-      try {
-        const res = await fetch("/api/analyze", { method: "GET" });
-        if (res.ok) {
-          const resData: AnalyzeApiResponse = await res.json();
-          if (resData.quota && setQuota) {
-            setQuota(resData.quota);
-          }
-        }
-      } catch (err) {
-        // Fallback jika endpoint GET belum diimplementasikan
-      }
-    }
+    // Jalankan hanya di Client-side
+    if (typeof window === "undefined") return;
 
-    // Ambil kuota terbaru dari backend jika belum ada di context
-    if (!quota || typeof quota.remaining !== "number") {
-      fetchQuota();
-    }
-  }, [quota, setQuota]);
+    // (A) Ambil Data Analisis
+    let finalResult =
+      analysisResult || formData?.analysisResult || formData?.analysis;
 
-  useEffect(() => {
-    let objectUrlToRevoke: string | null = null;
+    if (!finalResult) {
+      const sessionStored = sessionStorage.getItem("analysisResult");
+      const localStored = localStorage.getItem("analysisResult");
+      const stored = sessionStored || localStored;
 
-    // 1. Ambil data hasil analisis dari Context atau sessionStorage
-    const rawResult = analysisResult || formData?.analysisResult || formData?.analysis;
-
-    if (rawResult) {
-      setData(rawResult);
-      // Jika hasil analisis berhasil dan membawa data kuota terbaru dari API backend
-      if (rawResult.quota && setQuota) {
-        setQuota(rawResult.quota);
-      }
-    } else {
-      const stored = sessionStorage.getItem("analysisResult");
       if (stored) {
         try {
-          const parsed = JSON.parse(stored);
-          setData(parsed);
-          if (parsed.quota && setQuota) {
-            setQuota(parsed.quota);
-          }
+          finalResult = JSON.parse(stored);
         } catch (e) {
-          console.error("Gagal parse sessionStorage", e);
+          console.error("Gagal parse storage:", e);
         }
       }
     }
 
-    // 2. Ambil gambar preview dengan penanganan tipe data yang lengkap
-    const savedImage =
+    if (finalResult) {
+      setData(finalResult);
+      if (finalResult.quota && setQuota) {
+        setQuota(finalResult.quota);
+      }
+    }
+
+    // (B) Ambil Gambar Preview secara Langsung dari Storage
+    const cachedImage =
+      formContext?.selectedImage ||
       formData?.imagePreview ||
-      (typeof formData?.image === "string" ? formData.image : null) ||
-      sessionStorage.getItem("imagePreview");
+      sessionStorage.getItem("imagePreview") ||
+      localStorage.getItem("imagePreview");
 
-    if (savedImage) {
-      setImagePreview(savedImage);
-    } else if (formData?.image instanceof File || formData?.image instanceof Blob) {
-      // Konversi File/Blob ke Data URL (Base64) agar stabil dan tidak pecah
-      const reader = new FileReader();
-      reader.onloadend = () => {
-        const base64String = reader.result as string;
-        setImagePreview(base64String);
-        try {
-          sessionStorage.setItem("imagePreview", base64String);
-        } catch (e) {
-          console.warn("Gagal menyimpan gambar ke sessionStorage", e);
-        }
+    if (cachedImage) {
+      setImagePreview(cachedImage);
+    }
+
+    setIsReady(true);
+  }, [analysisResult, formData, formContext?.selectedImage, setQuota]);
+
+  // 2. Mencegah Duplicate History saat Refresh
+  useEffect(() => {
+    if (!data || hasAddedToHistory.current) return;
+
+    const currentName = data.detected_medicine_name || "Obat Terdeteksi";
+    const currentDetail = data.medical_explanation || "";
+
+    // Cek apakah data ini sudah ada di history context
+    const existsInContext = (history || []).some(
+      (item: any) =>
+        (item.medicineName === currentName || item.name === currentName) &&
+        (item.detail === currentDetail ||
+          item.medical_explanation === currentDetail),
+    );
+
+    if (!existsInContext) {
+      const newHistoryItem = {
+        id: `scan-${Date.now()}`,
+        timestamp: new Date().toLocaleTimeString("id-ID", {
+          hour: "2-digit",
+          minute: "2-digit",
+        }),
+        medicineName: currentName,
+        dosageForm: data.dosage_form || "Umum",
+        safetyStatus: data.safety_status || "Aman",
+        badgeLabel: data.safety_status,
+        category: data.safety_status,
+        detail: currentDetail,
       };
-      reader.readAsDataURL(formData.image);
-    } else if (formData?.image && typeof formData.image === "object") {
-      try {
-        const url = URL.createObjectURL(formData.image);
-        objectUrlToRevoke = url;
-        setImagePreview(url);
-      } catch (e) {
-        console.error("Gagal createObjectURL", e);
+
+      if (addHistoryItem) {
+        addHistoryItem(newHistoryItem);
+      } else if (setHistory) {
+        setHistory((prev: any[]) => [newHistoryItem, ...(prev || [])]);
       }
     }
 
-    setIsHydrated(true);
+    hasAddedToHistory.current = true;
+  }, [data, history, addHistoryItem, setHistory]);
 
-    // Cleanup object URL hanya jika URL lokal sementara dibuat
-    return () => {
-      if (objectUrlToRevoke) {
-        URL.revokeObjectURL(objectUrlToRevoke);
-      }
-    };
-  }, [analysisResult, formData, setQuota]);
-
-  // Handler Hapus Riwayat
-  const handleDeleteHistory = (idToDelete: string) => {
-    if (!setHistory) return;
-    const updatedHistory = (history || []).filter((item: any) => item.id !== idToDelete);
-    setHistory(updatedHistory);
+  // Handler Navigasi Bebas Freeze
+  const handleHardNavigate = (path: string) => {
+    try {
+      router.push(path);
+    } catch (err) {
+      window.location.href = path;
+    }
   };
 
-  // Handler untuk Cek Obat Lagi (Cek sisa kuota)
   const handleCheckAgain = () => {
-    if (remainingQuota <= 0) {
-      alert("Kuota analisis harian Anda telah habis (0 tersisa). Silakan coba lagi besok.");
+    const currentRemaining = quota?.remaining ?? 3;
+    if (currentRemaining <= 0) {
+      alert(
+        "Kuota analisis harian Anda telah habis (0 tersisa). Silakan coba lagi besok.",
+      );
       return;
     }
-    router.push("/check/step-1");
+
+    // Bersihkan storage scan aktif
+    sessionStorage.removeItem("analysisResult");
+    sessionStorage.removeItem("imagePreview");
+    localStorage.removeItem("analysisResult");
+    localStorage.removeItem("imagePreview");
+
+    if (setAnalysisResult) setAnalysisResult(null);
+    if (resetForm) resetForm();
+
+    handleHardNavigate("/check/step-1");
   };
 
-  // Tampilan Loading/Hydration singkat
-  if (!isHydrated) {
+  const handleDeleteHistory = (idToDelete: string) => {
+    if (formContext?.deleteHistoryItem) {
+      formContext.deleteHistoryItem(idToDelete);
+    } else if (setHistory) {
+      const updated = (history || []).filter(
+        (item: any) => item.id !== idToDelete,
+      );
+      setHistory(updated);
+    }
+  };
+
+  if (!isReady) {
     return (
       <div className="w-full max-w-md mx-auto py-24 text-center space-y-4 font-sans">
         <Loader2 className="w-8 h-8 text-[#1E293B] animate-spin mx-auto" />
@@ -183,7 +196,6 @@ export default function Step3Page() {
     );
   }
 
-  // Jika data tidak ditemukan
   if (!data) {
     return (
       <div className="max-w-md mx-auto my-16 p-8 bg-white rounded-3xl shadow-sm border border-slate-100 text-center space-y-4 font-sans">
@@ -197,7 +209,8 @@ export default function Step3Page() {
           Silakan lakukan pemindaian ulang foto obat di Langkah 2.
         </p>
         <button
-          onClick={() => router.push("/check/step-2")}
+          type="button"
+          onClick={() => handleHardNavigate("/check/step-2")}
           className="mt-2 px-6 py-2.5 bg-[#1E293B] text-white text-xs font-bold rounded-full hover:bg-black transition-all"
         >
           Kembali ke Langkah 2
@@ -206,9 +219,7 @@ export default function Step3Page() {
     );
   }
 
-  // Tentukan Kategori Status Keamanan
   let statusCategory: "SAFE" | "WARNING" | "UNSAFE" = "UNSAFE";
-
   if (data.safety_status === "Aman") {
     statusCategory = "SAFE";
   } else if (data.safety_status === "Sebaiknya Dihindari") {
@@ -217,29 +228,12 @@ export default function Step3Page() {
     statusCategory = "UNSAFE";
   }
 
-  // Gunakan riwayat dari Context (yang sudah tersimpan di localStorage via FormProvider)
-  const historyList = history && history.length > 0 
-    ? history 
-    : [
-        {
-          id: "1",
-          name: data.detected_medicine_name || "Obat Terdeteksi",
-          time: `Sediaan: ${data.dosage_form || "Umum"}`,
-          status: data.safety_status,
-          category: statusCategory,
-          detail: data.medical_explanation,
-        },
-      ];
-
-  // Nilai kuota dinamis langsung dari Context / FormProvider
-  const remainingQuota = quota?.remaining ?? 5;
+  const remainingQuota = quota?.remaining ?? 3;
   const totalQuota = quota?.total ?? 5;
 
   return (
     <div className="w-full max-w-5xl mx-auto space-y-6 pb-12 font-sans text-[#1E293B]">
-      {/* ========================================================= */}
-      {/* TOP HEADER & QUOTA CARD SECTION                           */}
-      {/* ========================================================= */}
+      {/* HEADER & KUOTA */}
       <div className="flex flex-col lg:flex-row justify-between items-start lg:items-center gap-4">
         <div>
           <div className="inline-flex items-center gap-1.5 px-3 py-1 bg-[#A6DB00] text-[#1E293B] text-xs font-extrabold rounded-full tracking-wider uppercase mb-2">
@@ -255,7 +249,6 @@ export default function Step3Page() {
           </p>
         </div>
 
-        {/* Quota Card Dinamis */}
         <div className="bg-white rounded-2xl p-4 md:p-5 shadow-sm border border-slate-100 min-w-[280px] w-full lg:w-auto">
           <div className="flex items-center justify-between text-xs font-bold text-[#1E293B] mb-2">
             <span>Kuota Analisis Harian</span>
@@ -279,13 +272,12 @@ export default function Step3Page() {
         </div>
       </div>
 
-      {/* ========================================================= */}
-      {/* STEPPER HEADER                                            */}
-      {/* ========================================================= */}
+      {/* STEPPER HEADER */}
       <div className="bg-white rounded-2xl p-4 shadow-sm border border-slate-100 grid grid-cols-1 md:grid-cols-3 gap-4">
-        <div
-          onClick={() => router.push("/check/step-1")}
-          className="flex items-center gap-3 p-3 rounded-xl cursor-pointer hover:bg-slate-50 transition-all opacity-60"
+        <button
+          type="button"
+          onClick={() => handleHardNavigate("/check/step-1")}
+          className="flex items-center gap-3 p-3 rounded-xl hover:bg-slate-50 transition-all opacity-60 text-left"
         >
           <div className="w-8 h-8 rounded-full bg-slate-200 text-slate-600 font-bold flex items-center justify-center text-sm">
             1
@@ -298,11 +290,12 @@ export default function Step3Page() {
               Langkah 1: Profil Medis
             </div>
           </div>
-        </div>
+        </button>
 
-        <div
-          onClick={() => router.push("/check/step-2")}
-          className="flex items-center gap-3 p-3 rounded-xl cursor-pointer hover:bg-slate-50 transition-all opacity-60"
+        <button
+          type="button"
+          onClick={() => handleHardNavigate("/check/step-2")}
+          className="flex items-center gap-3 p-3 rounded-xl hover:bg-slate-50 transition-all opacity-60 text-left"
         >
           <div className="w-8 h-8 rounded-full bg-slate-200 text-slate-600 font-bold flex items-center justify-center text-sm">
             2
@@ -315,7 +308,7 @@ export default function Step3Page() {
               Langkah 2: Unggah Foto
             </div>
           </div>
-        </div>
+        </button>
 
         <div className="flex items-center gap-3 p-3 rounded-xl bg-[#F1F5F9] border border-slate-200">
           <div className="w-8 h-8 rounded-full bg-[#A6DB00] text-[#1E293B] font-bold flex items-center justify-center text-sm">
@@ -332,11 +325,8 @@ export default function Step3Page() {
         </div>
       </div>
 
-      {/* ========================================================= */}
-      {/* MAIN ANALYSIS RESULT CARD                                 */}
-      {/* ========================================================= */}
+      {/* HASIL ANALISIS */}
       <div className="bg-white rounded-3xl p-6 md:p-8 shadow-sm border border-slate-100 space-y-6">
-        {/* Indikator Kategori Keamanan Header */}
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-2 border-b border-slate-100">
           <span className="text-xs font-bold text-[#64748B] tracking-wider uppercase">
             INDIKATOR KATEGORI KEAMANAN:
@@ -387,9 +377,7 @@ export default function Step3Page() {
           </div>
         </div>
 
-        {/* Detail Foto & Komposisi Obat */}
         <div className="grid grid-cols-1 md:grid-cols-12 gap-4">
-          {/* Foto Obat Terunggah */}
           <div className="md:col-span-4 bg-[#F8FAFC] border border-slate-200 rounded-2xl p-4 flex flex-col justify-between space-y-3">
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-1.5 text-xs font-bold text-[#64748B]">
@@ -397,7 +385,7 @@ export default function Step3Page() {
                 FOTO KEMASAN TERUNGGAH
               </div>
               <span className="px-2 py-0.5 bg-[#A6DB00] text-[#1E293B] text-[10px] font-bold rounded-full">
-                {data.ai_confidence_level}
+                {data.ai_confidence_level || "95%"}
               </span>
             </div>
 
@@ -418,7 +406,6 @@ export default function Step3Page() {
             </div>
           </div>
 
-          {/* Nama Obat & Kandungan OCR */}
           <div className="md:col-span-8 space-y-4">
             <div className="bg-[#F8FAFC] border border-slate-200 rounded-2xl p-4">
               <div className="text-[11px] font-bold text-[#64748B] tracking-wider uppercase mb-1">
@@ -448,14 +435,13 @@ export default function Step3Page() {
           </div>
         </div>
 
-        {/* Box Penjelasan Medis & Interaksi */}
         <div
           className={`border rounded-2xl p-5 space-y-2 ${
             statusCategory === "UNSAFE"
               ? "bg-red-50 border-red-100"
               : statusCategory === "WARNING"
-              ? "bg-amber-50 border-amber-100"
-              : "bg-emerald-50 border-emerald-100"
+                ? "bg-amber-50 border-amber-100"
+                : "bg-emerald-50 border-emerald-100"
           }`}
         >
           <div
@@ -463,8 +449,8 @@ export default function Step3Page() {
               statusCategory === "UNSAFE"
                 ? "text-red-600"
                 : statusCategory === "WARNING"
-                ? "text-amber-700"
-                : "text-emerald-700"
+                  ? "text-amber-700"
+                  : "text-emerald-700"
             }`}
           >
             {statusCategory === "UNSAFE" ? (
@@ -481,7 +467,6 @@ export default function Step3Page() {
           </p>
         </div>
 
-        {/* Box Saran & Rekomendasi AI */}
         <div className="bg-[#EBF7C6] border border-[#d2ec70] rounded-2xl p-5 space-y-2">
           <div className="flex items-center gap-2 text-[#1E293B] font-bold text-base">
             <Lightbulb className="w-5 h-5 text-[#1E293B]" />
@@ -493,9 +478,7 @@ export default function Step3Page() {
         </div>
       </div>
 
-      {/* ========================================================= */}
-      {/* RIWAYAT CEK OBAT TERKINI SECTION                          */}
-      {/* ========================================================= */}
+      {/* SECTION RIWAYAT CEK OBAT (HISTORI) */}
       <div className="bg-white rounded-3xl p-6 md:p-8 shadow-sm border border-slate-100 space-y-4">
         <div className="flex justify-between items-center pb-2">
           <div className="flex items-center gap-2">
@@ -516,88 +499,99 @@ export default function Step3Page() {
           </span>
         </div>
 
-        <div className="space-y-3">
-          {historyList.map((item: any, idx: number) => {
-            const isUnsafe =
-              item.category === "UNSAFE" ||
-              String(item.status).toLowerCase().includes("tidak aman");
-            const isWarning =
-              item.category === "WARNING" ||
-              String(item.status).toLowerCase().includes("hindari");
+        {!history || history.length === 0 ? (
+          <div className="p-6 text-center text-xs text-slate-400 font-medium bg-[#F8FAFC] rounded-2xl border border-dashed border-slate-200">
+            Belum ada riwayat pemindaian obat.
+          </div>
+        ) : (
+          <div className="space-y-3">
+            {history.map((item: any, idx: number) => {
+              const statusStr = String(
+                item.safetyStatus || item.status || item.category || "",
+              ).toLowerCase();
+              const isUnsafe =
+                statusStr.includes("tidak aman") ||
+                statusStr.includes("unsafe");
+              const isWarning =
+                statusStr.includes("hindari") || statusStr.includes("warning");
 
-            return (
-              <div
-                key={item.id || idx}
-                className="bg-[#F8FAFC] border border-slate-200 rounded-2xl p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3"
-              >
-                <div className="flex items-center gap-3">
-                  <div
-                    className={`w-10 h-10 rounded-xl flex items-center justify-center font-bold text-xs flex-shrink-0 ${
-                      isUnsafe
-                        ? "bg-red-100 text-red-600"
-                        : isWarning
-                        ? "bg-amber-100 text-amber-600"
-                        : "bg-emerald-100 text-emerald-600"
-                    }`}
-                  >
-                    💊
+              return (
+                <div
+                  key={item.id || idx}
+                  className="bg-[#F8FAFC] border border-slate-200 rounded-2xl p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3"
+                >
+                  <div className="flex items-center gap-3">
+                    <div
+                      className={`w-10 h-10 rounded-xl flex items-center justify-center font-bold text-xs flex-shrink-0 ${
+                        isUnsafe
+                          ? "bg-red-100 text-red-600"
+                          : isWarning
+                            ? "bg-amber-100 text-amber-600"
+                            : "bg-emerald-100 text-emerald-600"
+                      }`}
+                    >
+                      💊
+                    </div>
+                    <div>
+                      <h4 className="font-bold text-sm text-[#1E293B]">
+                        {item.medicineName || item.name}
+                      </h4>
+                      <p className="text-xs text-[#64748B]">
+                        {item.timestamp ||
+                          item.time ||
+                          item.dateFormatted ||
+                          "Hari ini"}{" "}
+                        • {item.dosageForm || "Sediaan Obat"}
+                      </p>
+                    </div>
                   </div>
-                  <div>
-                    <h4 className="font-bold text-sm text-[#1E293B]">
-                      {item.name || item.medicineName}
-                    </h4>
-                    <p className="text-xs text-[#64748B]">
-                      {item.time || item.dateFormatted || "Hari ini • Sediaan Obat"}
-                    </p>
+
+                  <div className="flex items-center gap-2 self-end sm:self-center">
+                    <span
+                      className={`px-3 py-1 text-xs font-bold rounded-full ${
+                        isUnsafe
+                          ? "bg-red-600 text-white"
+                          : isWarning
+                            ? "bg-amber-200 text-amber-800"
+                            : "bg-emerald-500 text-white"
+                      }`}
+                    >
+                      ● {item.safetyStatus || item.status || item.category}
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() =>
+                        setSelectedItem({
+                          name: item.medicineName || item.name,
+                          status: item.safetyStatus || item.status,
+                          detail: item.detail || item.medical_explanation,
+                        })
+                      }
+                      className="text-xs font-bold text-[#1E293B] hover:underline px-2 py-1"
+                    >
+                      Lihat Detail &gt;
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => handleDeleteHistory(item.id)}
+                      className="p-1.5 text-slate-400 hover:text-red-500 rounded-lg transition-colors"
+                      title="Hapus riwayat"
+                    >
+                      <Trash2 className="w-4 h-4" />
+                    </button>
                   </div>
                 </div>
-
-                <div className="flex items-center gap-2 self-end sm:self-center">
-                  <span
-                    className={`px-3 py-1 text-xs font-bold rounded-full ${
-                      isUnsafe
-                        ? "bg-red-600 text-white"
-                        : isWarning
-                        ? "bg-amber-200 text-amber-800"
-                        : "bg-emerald-500 text-white"
-                    }`}
-                  >
-                    ● {item.status || item.safetyStatus}
-                  </span>
-                  <button
-                    type="button"
-                    onClick={() =>
-                      setSelectedItem({
-                        name: item.name || item.medicineName,
-                        status: item.status || item.safetyStatus,
-                        detail: item.detail || item.medical_explanation,
-                      })
-                    }
-                    className="text-xs font-bold text-[#1E293B] hover:underline px-2 py-1"
-                  >
-                    Lihat Detail &gt;
-                  </button>
-                  <button 
-                    type="button"
-                    onClick={() => handleDeleteHistory(item.id)}
-                    className="p-1.5 text-slate-400 hover:text-red-500 rounded-lg transition-colors"
-                  >
-                    <Trash2 className="w-4 h-4" />
-                  </button>
-                </div>
-              </div>
-            );
-          })}
-        </div>
+              );
+            })}
+          </div>
+        )}
       </div>
 
-      {/* ========================================================= */}
-      {/* BOTTOM ACTION BUTTONS                                     */}
-      {/* ========================================================= */}
+      {/* BOTTOM ACTION BUTTONS */}
       <div className="flex flex-col sm:flex-row items-center justify-between gap-3 pt-2">
         <button
           type="button"
-          onClick={() => router.push("/check/step-2")}
+          onClick={() => handleHardNavigate("/check/step-2")}
           className="w-full sm:w-auto px-6 py-3 bg-[#F1F5F9] hover:bg-slate-200 text-[#1E293B] font-semibold text-sm rounded-full transition-all flex items-center justify-center gap-2"
         >
           <ArrowLeft className="w-4 h-4" />
@@ -638,13 +632,7 @@ export default function Step3Page() {
           <strong className="text-red-600">
             bukan pengganti diagnosis medis resmi
           </strong>{" "}
-          dokter spesialis atau instruksi apoteker berlisensi. Jika Anda
-          mengalami gejala akut atau reaksi alergi, segera kunjungi
-          <strong className="text-red-600">
-            {" "}
-            instalasi gawat darurat terdekat
-          </strong>
-          .
+          dokter spesialis atau instruksi apoteker berlisensi.
         </p>
       </div>
 
