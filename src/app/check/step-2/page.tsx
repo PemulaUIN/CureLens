@@ -1,34 +1,44 @@
-'use client';
+"use client";
 
-import { useState, useRef } from 'react';
-import { useRouter } from 'next/navigation';
-import { Camera, ArrowLeft, UploadCloud, X, FileText, ShieldCheck, ScanLine } from 'lucide-react';
-import { useFormContext } from '@/context/FormContext';
+import { useState, useRef } from "react";
+import { useRouter } from "next/navigation";
+import {
+  Camera,
+  ArrowLeft,
+  X,
+  FileText,
+  ShieldCheck,
+  ScanLine,
+  Loader2,
+} from "lucide-react";
+import { useFormContext } from "@/context/FormContext";
 
 export default function Step2Page() {
   const router = useRouter();
 
-  // Ambil context dan fallback aman
+  // Ambil profil & state penampung hasil analisis dari FormContext
   const formContext = useFormContext() as any;
-  const formData = formContext?.formData || formContext?.data || {};
-  const updateFormData = formContext?.updateFormData || formContext?.updateData || (() => {});
+  const { profile, setAnalysisResult, setFormData } = formContext;
 
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  const [selectedFile, setSelectedFile] = useState<File | null>(formData.image || null);
-  const [previewUrl, setPreviewUrl] = useState<string | null>(
-    formData.image ? URL.createObjectURL(formData.image) : null
-  );
+  const [selectedFile, setSelectedFile] = useState<File | null>(null);
+  const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const [isDragging, setIsDragging] = useState(false);
+
+  // State backend execution
+  const [isLoading, setIsLoading] = useState(false);
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
   // Handle Pemilihan File
   const handleFileChange = (file: File) => {
-    if (file && file.size <= 10 * 1024 * 1024) { // Max 10MB
+    if (file && file.size <= 10 * 1024 * 1024) {
+      // Max 10MB
       setSelectedFile(file);
       setPreviewUrl(URL.createObjectURL(file));
-      updateFormData({ image: file });
+      setErrorMessage(null);
     } else {
-      alert('Ukuran file maksimal adalah 10MB!');
+      alert("Ukuran file maksimal adalah 10MB!");
     }
   };
 
@@ -46,39 +56,92 @@ export default function Step2Page() {
       URL.revokeObjectURL(previewUrl);
     }
     setPreviewUrl(null);
-    updateFormData({ image: null });
     if (fileInputRef.current) {
-      fileInputRef.current.value = '';
+      fileInputRef.current.value = "";
     }
   };
 
-  const handleNext = (e: React.FormEvent) => {
-    e.preventDefault();
+  // Fungsi Kirim Data ke Backend API Gemini & Simpan Ke State
+  const handleStartAnalysis = async () => {
     if (!selectedFile) {
-      alert('Silakan unggah foto obat terlebih dahulu sebelum melanjutkan!');
+      alert("Silakan unggah foto obat terlebih dahulu sebelum melanjutkan!");
       return;
     }
-    router.push('/check/step-3');
+
+    setIsLoading(true);
+    setErrorMessage(null);
+
+    try {
+      // 1. Buat Payload FormData
+      const formData = new FormData();
+      formData.append("image", selectedFile);
+      formData.append("age", profile?.age || "");
+      formData.append("medicalConditions", profile?.medicalConditions || "");
+      formData.append("allergies", profile?.allergies || "");
+
+      // 2. Panggil API Route Backend (/api/analyze)
+      const res = await fetch("/api/analyze", {
+        method: "POST",
+        body: formData,
+      });
+
+      const data = await res.json();
+
+      if (!res.ok) {
+        throw new Error(
+          data.error || "Terjadi kesalahan saat menganalisis obat.",
+        );
+      }
+
+      // 3. SIMPAN HASIL ANALISIS DAN FOTO KE STATE CONTEXT
+      // (a) Jika menggunakan setter spesifik
+      if (setAnalysisResult) {
+        setAnalysisResult(data);
+      }
+
+      // (b) Jika menggunakan setFormData umum (menyimpan foto + hasil analisis)
+      if (setFormData) {
+        setFormData((prev: any) => ({
+          ...prev,
+          image: selectedFile,
+          imagePreview: previewUrl,
+          analysisResult: data,
+          analysis: data,
+        }));
+      }
+
+      // (c) Fallback simpan ke sessionStorage agar data tidak hilang saat refresh
+      sessionStorage.setItem("analysisResult", JSON.stringify(data));
+      if (previewUrl) {
+        sessionStorage.setItem("imagePreview", previewUrl);
+      }
+
+      // 4. Pindah ke Halaman Hasil (Step 3)
+      router.push("/check/step-3");
+    } catch (err: any) {
+      console.error("Analysis error:", err);
+      setErrorMessage(err.message || "Gagal terhubung ke server.");
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   return (
-    <div className="w-full max-w-6xl mx-auto space-y-8 font-['Manrope',sans-serif] text-[#1E293B]">
-      
-      {/* ==================== 3.2 PAGE HEADER & DAILY QUOTA CARD ==================== */}
+    <div className="w-full max-w-6xl mx-auto space-y-8 font-sans text-[#1E293B]">
+      {/* PAGE HEADER & DAILY QUOTA CARD */}
       <div className="flex flex-col md:flex-row md:items-start justify-between gap-6">
         <div className="space-y-3 max-w-2xl">
-          {/* Category Badge */}
           <div className="inline-flex items-center gap-1.5 px-3 py-1 bg-[#A6DB00] text-[#0F172A] rounded-full text-[11px] font-extrabold uppercase tracking-wider">
             <ShieldCheck className="w-3.5 h-3.5" />
             <span>CLINICAL AI</span>
           </div>
 
-          {/* Title & Sub-description */}
           <h1 className="text-3xl md:text-4xl font-extrabold text-[#0F172A] tracking-tight">
             Cek Obat
           </h1>
           <p className="text-sm md:text-base text-[#64748B] leading-relaxed">
-            Lengkapi data dan riwayat kondisi medis lalu unggah foto obat untuk analisis kontraindikasi serta keamanan polifarmasi yang akurat.
+            Lengkapi data dan riwayat kondisi medis lalu unggah foto obat untuk
+            analisis kontraindikasi serta keamanan polifarmasi yang akurat.
           </p>
         </div>
 
@@ -88,7 +151,6 @@ export default function Step2Page() {
             <span>Kuota Analisis Harian</span>
             <span className="text-[#0F172A]">3/5 Tersisa</span>
           </div>
-          {/* Progress Bar (5 segments, 3 active) */}
           <div className="grid grid-cols-5 gap-1.5 mb-2">
             <div className="h-2 rounded-full bg-[#A6DB00]"></div>
             <div className="h-2 rounded-full bg-[#A6DB00]"></div>
@@ -102,11 +164,10 @@ export default function Step2Page() {
         </div>
       </div>
 
-      {/* ==================== 3.3 STEPPER / PROGRESS HEADER ==================== */}
+      {/* STEPPER / PROGRESS HEADER */}
       <div className="bg-white rounded-2xl p-2 md:p-3 shadow-sm border border-slate-100 grid grid-cols-1 md:grid-cols-3 gap-2">
-        {/* Step 1 (Completed / Inactive) */}
-        <div 
-          onClick={() => router.push('/check/step-1')}
+        <div
+          onClick={() => !isLoading && router.push("/check/step-1")}
           className="flex items-center gap-3 p-3 rounded-xl cursor-pointer hover:bg-slate-50 transition-all"
         >
           <div className="w-9 h-9 rounded-full bg-[#E2E8F0] text-[#64748B] flex items-center justify-center font-bold text-sm shrink-0">
@@ -122,7 +183,6 @@ export default function Step2Page() {
           </div>
         </div>
 
-        {/* Step 2 (Active - Current) */}
         <div className="flex items-center gap-3 p-3 rounded-xl bg-[#F1F5F9]">
           <div className="w-9 h-9 rounded-full bg-[#A6DB00] text-[#0F172A] flex items-center justify-center font-bold text-sm shrink-0">
             2
@@ -137,7 +197,6 @@ export default function Step2Page() {
           </div>
         </div>
 
-        {/* Step 3 (Inactive) */}
         <div className="flex items-center gap-3 p-3 rounded-xl opacity-60">
           <div className="w-9 h-9 rounded-full bg-[#E2E8F0] text-[#64748B] flex items-center justify-center font-bold text-sm shrink-0">
             3
@@ -153,18 +212,25 @@ export default function Step2Page() {
         </div>
       </div>
 
-      {/* ==================== 3.4 UPLOAD SECTION (DROPZONE AREA) ==================== */}
+      {/* ERROR ALERT DISPLAY */}
+      {errorMessage && (
+        <div className="p-4 bg-red-50 border border-red-200 text-red-700 text-sm rounded-2xl font-medium">
+          ⚠️ {errorMessage}
+        </div>
+      )}
+
+      {/* UPLOAD SECTION (DROPZONE AREA) */}
       <div className="bg-white rounded-3xl p-6 md:p-10 shadow-sm border border-slate-100">
         <div className="mb-8">
           <h2 className="text-2xl md:text-3xl font-bold text-[#0F172A]">
             Unggah Kemasan Obat
           </h2>
           <p className="text-sm md:text-base text-[#64748B] mt-1.5">
-            Sistem CureLens akan otomatis mengekstrak dan menganalisis nama obat, komposisi aktif, serta dosisnya
+            Sistem CureLens akan otomatis mengekstrak dan menganalisis nama
+            obat, komposisi aktif, serta dosisnya
           </p>
         </div>
 
-        {/* Input File Tersembunyi */}
         <input
           type="file"
           ref={fileInputRef}
@@ -177,7 +243,6 @@ export default function Step2Page() {
           }}
         />
 
-        {/* Dropzone Container */}
         {!previewUrl ? (
           <div
             onDragOver={(e) => {
@@ -187,10 +252,11 @@ export default function Step2Page() {
             onDragLeave={() => setIsDragging(false)}
             onDrop={handleDrop}
             className={`rounded-3xl p-10 md:p-14 text-center bg-[#F8FAFC] transition-all flex flex-col items-center justify-center space-y-5 border ${
-              isDragging ? 'border-[#A6DB00] bg-[#F1F5F9] scale-[0.99]' : 'border-transparent'
+              isDragging
+                ? "border-[#A6DB00] bg-[#F1F5F9] scale-[0.99]"
+                : "border-transparent"
             }`}
           >
-            {/* Kamera Icon Box Soft Green */}
             <div className="w-16 h-16 rounded-2xl bg-[#E2F396]/60 flex items-center justify-center text-[#1E293B]">
               <Camera className="w-8 h-8 text-[#27272A]" />
             </div>
@@ -200,15 +266,16 @@ export default function Step2Page() {
                 Seret & Jatuhkan Foto Kemasan Obat Di Sini
               </h3>
               <p className="text-xs md:text-sm text-[#64748B] leading-relaxed">
-                Mendukung format JPG, PNG, WEBP (Maksimal 10MB). Pastikan tulisan komposisi terlihat fokus dan jelas.
+                Mendukung format JPG, PNG, WEBP (Maksimal 10MB). Pastikan
+                tulisan komposisi terlihat fokus dan jelas.
               </p>
             </div>
 
-            {/* Pilih File Button */}
             <button
               type="button"
+              disabled={isLoading}
               onClick={() => fileInputRef.current?.click()}
-              className="mt-2 px-6 py-3 bg-[#27272A] hover:bg-[#18181B] text-white font-bold text-sm rounded-full transition-all flex items-center gap-2 shadow-sm"
+              className="mt-2 px-6 py-3 bg-[#27272A] hover:bg-[#18181B] text-white font-bold text-sm rounded-full transition-all flex items-center gap-2 shadow-sm disabled:opacity-50"
             >
               Pilih File dari Perangkat
             </button>
@@ -229,7 +296,11 @@ export default function Step2Page() {
                 <span className="truncate max-w-md">{selectedFile?.name}</span>
               </div>
               <p className="text-xs text-[#64748B] font-medium">
-                Ukuran: {selectedFile ? (selectedFile.size / (1024 * 1024)).toFixed(2) : 0} MB
+                Ukuran:{" "}
+                {selectedFile
+                  ? (selectedFile.size / (1024 * 1024)).toFixed(2)
+                  : 0}{" "}
+                MB
               </p>
               <div className="inline-flex items-center gap-1.5 px-3 py-1 bg-[#A6DB00]/20 text-[#0F172A] text-xs font-bold rounded-full">
                 ✓ Foto Siap untuk dianalisis
@@ -237,8 +308,9 @@ export default function Step2Page() {
             </div>
             <button
               type="button"
+              disabled={isLoading}
               onClick={handleRemoveFile}
-              className="p-2.5 text-slate-400 hover:text-red-500 hover:bg-red-50 rounded-full transition-all"
+              className="p-2.5 text-slate-400 hover:text-red-500 hover:bg-red-50 rounded-full transition-all disabled:opacity-50"
               title="Hapus foto"
             >
               <X className="w-6 h-6" />
@@ -247,12 +319,13 @@ export default function Step2Page() {
         )}
       </div>
 
-      {/* ==================== 3.5 BOTTOM ACTION BAR ==================== */}
+      {/* BOTTOM ACTION BAR */}
       <div className="flex items-center justify-between pt-2">
         <button
           type="button"
-          onClick={() => router.push('/check/step-1')}
-          className="px-6 py-3 bg-[#F1F5F9] hover:bg-slate-200 text-[#1E293B] font-bold text-sm rounded-full transition-all flex items-center gap-2"
+          disabled={isLoading}
+          onClick={() => router.push("/check/step-1")}
+          className="px-6 py-3 bg-[#F1F5F9] hover:bg-slate-200 text-[#1E293B] font-bold text-sm rounded-full transition-all flex items-center gap-2 disabled:opacity-50"
         >
           <ArrowLeft className="w-4 h-4" />
           Kembali
@@ -260,17 +333,27 @@ export default function Step2Page() {
 
         <button
           type="button"
-          onClick={handleNext}
-          disabled={!selectedFile}
+          disabled={!selectedFile || isLoading}
+          onClick={handleStartAnalysis}
           className={`px-7 py-3.5 bg-[#A6DB00] hover:bg-[#95c500] text-[#0F172A] font-extrabold text-sm rounded-full transition-all flex items-center gap-2.5 shadow-sm ${
-            !selectedFile ? 'opacity-50 cursor-not-allowed' : 'hover:scale-[1.02] active:scale-[0.98]'
+            !selectedFile || isLoading
+              ? "opacity-50 cursor-not-allowed"
+              : "hover:scale-[1.02] active:scale-[0.98]"
           }`}
         >
-          <ScanLine className="w-4 h-4 text-[#0F172A]" />
-          Mulai Analisis Obat
+          {isLoading ? (
+            <>
+              <Loader2 className="w-4 h-4 animate-spin text-[#0F172A]" />
+              Menganalisis Obat...
+            </>
+          ) : (
+            <>
+              <ScanLine className="w-4 h-4 text-[#0F172A]" />
+              Mulai Analisis Obat
+            </>
+          )}
         </button>
       </div>
-
     </div>
   );
 }

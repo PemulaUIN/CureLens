@@ -1,6 +1,7 @@
 "use client";
 
 import React, { createContext, useContext, useState } from "react";
+import { AnalysisResponse } from "@/types";
 
 interface Profile {
   age: string;
@@ -11,6 +12,10 @@ interface Profile {
 interface FormContextType {
   profile: Profile;
   setProfile: React.Dispatch<React.SetStateAction<Profile>>;
+  analysisResult: AnalysisResponse | null;
+  setAnalysisResult: React.Dispatch<
+    React.SetStateAction<AnalysisResponse | null>
+  >;
 }
 
 const FormContext = createContext<FormContextType | undefined>(undefined);
@@ -22,8 +27,15 @@ export function FormProvider({ children }: { children: React.ReactNode }) {
     allergies: "",
   });
 
+  // State untuk menampung hasil respon Gemini
+  const [analysisResult, setAnalysisResult] = useState<AnalysisResponse | null>(
+    null,
+  );
+
   return (
-    <FormContext.Provider value={{ profile, setProfile }}>
+    <FormContext.Provider
+      value={{ profile, setProfile, analysisResult, setAnalysisResult }}
+    >
       {children}
     </FormContext.Provider>
   );
