@@ -10,6 +10,9 @@ import {
   ShieldCheck,
   ScanLine,
   Loader2,
+  // --- AWAL PENAMBAHAN FITUR: Import ImagePlus ---
+  ImagePlus,
+  // --- AKHIR PENAMBAHAN FITUR ---
 } from "lucide-react";
 import { useFormContext } from "@/context/FormContext";
 
@@ -26,6 +29,9 @@ export default function Step2Page() {
   } = formContext;
 
   const fileInputRef = useRef<HTMLInputElement>(null);
+  // --- AWAL PENAMBAHAN FITUR: Ref untuk input kamera ---
+  const cameraInputRef = useRef<HTMLInputElement>(null);
+  // --- AKHIR PENAMBAHAN FITUR ---
 
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
@@ -71,9 +77,15 @@ export default function Step2Page() {
       URL.revokeObjectURL(previewUrl);
     }
     setPreviewUrl(null);
+    
     if (fileInputRef.current) {
       fileInputRef.current.value = "";
     }
+    // --- AWAL PENAMBAHAN FITUR: Reset input kamera ---
+    if (cameraInputRef.current) {
+      cameraInputRef.current.value = "";
+    }
+    // --- AKHIR PENAMBAHAN FITUR ---
   };
 
   const fileToBase64 = (file: File): Promise<string> => {
@@ -266,10 +278,13 @@ export default function Step2Page() {
           </p>
         </div>
 
+        {/* --- AWAL PENAMBAHAN FITUR: Input Kamera dan Galeri terpisah --- */}
+        {/* Input kamera langsung (mobile: buka kamera belakang) */}
         <input
           type="file"
-          ref={fileInputRef}
-          accept="image/jpeg,image/png,image/webp"
+          ref={cameraInputRef}
+          accept="image/*"
+          capture="environment"
           className="hidden"
           onChange={(e) => {
             if (e.target.files && e.target.files[0]) {
@@ -277,6 +292,20 @@ export default function Step2Page() {
             }
           }}
         />
+
+        {/* Input galeri / file explorer (tanpa capture) */}
+        <input
+          type="file"
+          ref={fileInputRef}
+          accept="image/*"
+          className="hidden"
+          onChange={(e) => {
+            if (e.target.files && e.target.files[0]) {
+              handleFileChange(e.target.files[0]);
+            }
+          }}
+        />
+        {/* --- AKHIR PENAMBAHAN FITUR --- */}
 
         {!previewUrl ? (
           <div
@@ -306,14 +335,30 @@ export default function Step2Page() {
               </p>
             </div>
 
-            <button
-              type="button"
-              disabled={isLoading || isQuotaExhausted}
-              onClick={() => fileInputRef.current?.click()}
-              className="mt-2 px-6 py-3 bg-[#27272A] hover:bg-[#18181B] text-white font-bold text-sm rounded-full transition-all flex items-center gap-2 shadow-sm disabled:opacity-50 disabled:cursor-not-allowed"
-            >
-              Pilih File dari Perangkat
-            </button>
+            {/* --- AWAL PENAMBAHAN FITUR: Tombol Ambil Foto & Unggah Foto --- */}
+            <div className="flex flex-col sm:flex-row items-center gap-3">
+              <button
+                type="button"
+                disabled={isLoading || isQuotaExhausted}
+                onClick={() => cameraInputRef.current?.click()}
+                className="mt-2 px-6 py-3 bg-[#27272A] hover:bg-[#18181B] text-white font-bold text-sm rounded-full transition-all flex items-center gap-2 shadow-sm disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                <Camera className="w-4 h-4" />
+                Ambil Foto
+              </button>
+              
+              <button
+                type="button"
+                disabled={isLoading || isQuotaExhausted}
+                onClick={() => fileInputRef.current?.click()}
+                className="mt-2 px-6 py-3 bg-white border border-[#27272A] text-[#1E293B] hover:bg-[#F1F5F9] font-bold text-sm rounded-full transition-all flex items-center gap-2 shadow-sm disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                <ImagePlus className="w-4 h-4" />
+                Unggah Foto
+              </button>
+            </div>
+            {/* --- AKHIR PENAMBAHAN FITUR --- */}
+
           </div>
         ) : (
           <div className="relative border border-slate-200 rounded-2xl p-5 bg-[#F8FAFC] flex flex-col md:flex-row items-center gap-6">
